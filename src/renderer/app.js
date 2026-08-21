@@ -139,6 +139,7 @@ let noiseContext = null
 let noiseSource = null
 let noiseNode = null
 let noiseDestination = null
+let noiseDryDelay = null
 let noiseDryGain = null
 let noiseWetGain = null
 let noiseSetupPromise = null
@@ -158,7 +159,16 @@ async function createNoiseSuppressedStream(inputStream) {
     noiseDryGain = noiseContext.createGain()
     noiseWetGain = noiseContext.createGain()
     noiseDestination = noiseContext.createMediaStreamDestination()
-    noiseSource.connect(noiseDryGain)
+    // RNNoise processa em quadros fixos de 480 amostras a 48kHz (10ms) — o
+    // caminho "molhado" (filtrado) sai atrasado esse tanto em relação ao
+    // "seco" (original). Sem compensar, misturar os dois na intensidade
+    // padrão (ver updateNoiseIntensity, que nunca zera o seco) somava o
+    // mesmo áudio dessincronizado — ouvido como eco/flanger. Esse
+    // DelayNode alinha o seco ao mesmo atraso antes de somar.
+    noiseDryDelay = noiseContext.createDelay(0.05)
+    noiseDryDelay.delayTime.value = 0.01
+    noiseSource.connect(noiseDryDelay)
+    noiseDryDelay.connect(noiseDryGain)
     noiseDryGain.connect(noiseDestination)
     noiseSource.connect(noiseNode)
     noiseNode.connect(noiseWetGain)
@@ -193,10 +203,12 @@ function destroyNoiseSuppression() {
   noiseSource?.disconnect()
   noiseNode?.disconnect()
   noiseNode?.destroy()
+  noiseDryDelay?.disconnect()
   noiseContext?.close()
   noiseSource = null
   noiseNode = null
   noiseDestination = null
+  noiseDryDelay = null
   noiseDryGain = null
   noiseWetGain = null
   noiseContext = null
