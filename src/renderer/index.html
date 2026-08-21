@@ -13,6 +13,16 @@
     <div class="titlebar-drag">
       <span class="app-logo">⬡</span>
       <span class="app-name">ShareSync</span>
+
+      <!-- Versão + atualização — ao lado do nome, lado a lado. A versão
+           também funciona como botão de "verificar atualização" manual. -->
+      <div class="titlebar-status">
+        <button id="app-version" class="app-version" title="Verificar atualização"></button>
+        <button id="btn-update" class="btn-update hidden" title="Baixar e instalar atualização">
+          <span class="update-icon">⬇</span>
+          <span id="update-text">Atualização disponível</span>
+        </button>
+      </div>
     </div>
     <div class="titlebar-controls">
       <button class="tb-btn" id="btn-min" title="Minimizar">─</button>
@@ -66,11 +76,19 @@
           <span id="display-room-id">--------</span>
           <button id="btn-copy-id" class="icon-btn" title="Copiar código">⎘</button>
         </div>
-        <div class="ping-box" id="ping-box" data-level="0" title="Latência com o servidor">
+        <div class="ping-box" id="ping-box" data-level="0">
           <span class="ping-bars">
             <span class="bar b1"></span><span class="bar b2"></span><span class="bar b3"></span><span class="bar b4"></span>
           </span>
           <span class="ping-ms" id="ping-ms">-- ms</span>
+
+          <!-- Detalhe ao passar o mouse — histórico dos últimos pings -->
+          <div class="ping-popover">
+            <div class="ping-popover-row"><span>Atual</span><span id="ping-detail-now">-- ms</span></div>
+            <div class="ping-popover-row"><span>Média</span><span id="ping-detail-avg">-- ms</span></div>
+            <div class="ping-popover-row"><span>Mín / máx</span><span id="ping-detail-minmax">-- / -- ms</span></div>
+            <svg id="ping-graph" class="ping-graph" viewBox="0 0 100 28" preserveAspectRatio="none"></svg>
+          </div>
         </div>
       </div>
 
@@ -198,16 +216,6 @@
   <div id="self-preview" class="self-preview hidden">
     <video id="self-preview-video" autoplay muted playsinline></video>
   </div>
-
-  <!-- VERSÃO — canto inferior esquerdo, sempre visível em qualquer tela.
-       Também funciona como botão de "verificar atualização" manual. -->
-  <button id="app-version" class="app-version" title="Verificar atualização"></button>
-
-  <!-- ATUALIZAÇÃO — canto inferior esquerdo (acima da versão), só aparece quando há update -->
-  <button id="btn-update" class="btn-update hidden" title="Baixar e instalar atualização">
-    <span class="update-icon">⬇</span>
-    <span id="update-text">Atualização disponível</span>
-  </button>
 
   <script src="app.js"></script>
 </body>

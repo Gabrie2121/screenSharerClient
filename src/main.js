@@ -1,9 +1,14 @@
-const { app, BrowserWindow, ipcMain, desktopCapturer, session } = require('electron')
+const { app, BrowserWindow, ipcMain, desktopCapturer, session, Tray, Menu } = require('electron')
 const { autoUpdater } = require('electron-updater')
 const path = require('path')
 const fs = require('fs')
 
 let mainWindow = null
+let tray = null
+// Fechar a janela (X, ou o botão de fechar do titlebar custom) minimiza
+// pra bandeja em vez de encerrar o app — só sai de verdade pelo "Sair" do
+// menu da bandeja (ou Cmd+Q no mac), que marca essa flag antes.
+let isQuitting = false
 
 // ──────────────────────────────────────────────
 // LOG BÁSICO (processo principal)
@@ -157,6 +162,42 @@ function createWindow() {
   win.loadFile(path.join(__dirname, 'renderer', 'index.html'))
   mainWindow = win
   win.on('closed', () => { if (mainWindow === win) mainWindow = null })
+
+  // Minimiza pra bandeja em vez de fechar — assim uma live em andamento
+  // não é derrubada só porque a pessoa clicou no X. "Sair" de verdade só
+  // pelo menu da bandeja (ver createTray).
+  win.on('close', (e) => {
+    if (isQuitting) return
+    e.preventDefault()
+    win.hide()
+  })
+
+  return win
+}
+
+function createTray() {
+  tray = new Tray(path.join(__dirname, 'assets', 'icon.ico'))
+  tray.setToolTip('ShareSync')
+
+  const showWindow = () => {
+    if (!mainWindow) return
+    mainWindow.show()
+    mainWindow.focus()
+  }
+
+  tray.setContextMenu(Menu.buildFromTemplate([
+    { label: 'Abrir ShareSync', click: showWindow },
+    { type: 'separator' },
+    {
+      label: 'Sair',
+      click: () => {
+        isQuitting = true
+        app.quit()
+      },
+    },
+  ]))
+  tray.on('click', showWindow)
+  tray.on('double-click', showWindow)
 }
 
 // Permite que o renderer também grave eventos no log básico do app
@@ -193,9 +234,19 @@ ipcMain.on('set-capture-source-id', (_e, id) => { pendingSourceId = id })
 app.whenReady().then(() => {
   log('INFO', '🚀 App iniciado')
   createWindow()
+  createTray()
 })
+// Fecha a janela (X) só esconde pra bandeja agora (ver win.on('close') em
+// createWindow) — window-all-closed só dispara mesmo num "Sair" de verdade.
 app.on('window-all-closed', () => {
   log('INFO', '🛑 Todas as janelas fechadas')
   if (process.platform !== 'darwin') app.quit()
 })
-app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow() })
+// Cobre outros jeitos de sair (Cmd+Q no mac, app.quit() chamado de fora do
+// menu da bandeja) — sem isso, esses caminhos cairiam no win.on('close') e
+// só esconderiam a janela em vez de encerrar de verdade.
+app.on('before-quit', () => { isQuitting = true })
+app.on('activate', () => {
+  if (BrowserWindow.getAllWindows().length === 0) createWindow()
+  else mainWindow?.show()
+})

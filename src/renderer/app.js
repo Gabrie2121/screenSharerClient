@@ -70,9 +70,11 @@ const state = {
   // Stream em foco na tela (as demais ficam minimizadas embaixo)
   focusedId: null,
 
-  // Medição de latência (ping)
+  // Medição de latência (ping) — histórico curto pro popover de detalhe
+  // (ver ping-box no hover), últimas ~20 amostras (~1min a cada 3s)
   pingInterval: null,
   pingWaiting: false,
+  pingHistory: [],
 
   // Timeouts de "assistir" pendente — evita loading infinito (ver toggleWatch)
   watchTimeouts: {},
@@ -292,6 +294,23 @@ window.electronAPI?.onUpdateError(({ message }) => {
 // ──────────────────────────────────────────────
 // LOGIN
 // ──────────────────────────────────────────────
+// Troca o conteúdo do botão por um spinner + "Conectando…" enquanto tenta
+// entrar na sala (some sozinho quando conecta ou dá erro — ver enterRoom).
+function setButtonLoading(btn, loading) {
+  if (loading) {
+    if (btn.dataset.originalHtml === undefined) btn.dataset.originalHtml = btn.innerHTML
+    btn.innerHTML = '<span class="spinner spinner-sm"></span> Conectando…'
+  } else if (btn.dataset.originalHtml !== undefined) {
+    btn.innerHTML = btn.dataset.originalHtml
+  }
+  btn.disabled = loading
+}
+
+function setLoginButtonsDisabled(disabled) {
+  setButtonLoading($('btn-create-room'), disabled)
+  setButtonLoading($('btn-join-room'), disabled)
+}
+
 $('btn-create-room').onclick = async () => {
   const name = $('input-name').value.trim()
   const server = $('input-server').value.trim()
@@ -299,6 +318,7 @@ $('btn-create-room').onclick = async () => {
   hideError()
 
   // Cria sala via REST
+  setLoginButtonsDisabled(true)
   const httpUrl = server.replace(/^ws/, 'http')
   try {
     const res = await fetch(`${httpUrl}/api/rooms/`, { method: 'POST' })
@@ -306,6 +326,7 @@ $('btn-create-room').onclick = async () => {
     enterRoom(name, server, data.room_id)
   } catch {
     showError('Não foi possível conectar ao servidor. Verifique o endereço.')
+    setLoginButtonsDisabled(false)
   }
 }
 
@@ -316,20 +337,27 @@ $('btn-join-room').onclick = () => {
   if (!name)   return showError('Digite seu nome.')
   if (!roomId) return showError('Digite o código da sala.')
   hideError()
+  setLoginButtonsDisabled(true)
   enterRoom(name, server, roomId)
 }
 
 // ──────────────────────────────────────────────
 // ENTRAR NA SALA
 // ──────────────────────────────────────────────
+// Entrar por código não fazia nenhuma checagem de conexão — trocava pra
+// tela da sala na hora, mesmo que o servidor estivesse fora do ar ou o
+// endereço estivesse errado, deixando uma sala vazia e "quebrada" sem
+// explicação. Agora só troca de tela quando o WebSocket realmente conecta
+// (ver onopen/onclose em connectWebSocket) — hasEnteredRoom controla isso.
+let hasEnteredRoom = false
+
 function enterRoom(name, server, roomId) {
   state.myName   = name
   state.serverUrl = server
   state.roomId   = roomId
   manualDisconnect = false
+  hasEnteredRoom = false
 
-  $('display-room-id').textContent = roomId
-  showScreen('room')
   appLog('INFO', `Entrando na sala ${roomId} como "${name}" (servidor: ${server})`)
   connectWebSocket()
 }
@@ -337,8 +365,11 @@ function enterRoom(name, server, roomId) {
 // ──────────────────────────────────────────────
 // WEBSOCKET
 // ──────────────────────────────────────────────
-// Se o servidor cair, tenta reconectar sozinho a cada 5s até voltar (ou até
-// a pessoa sair da sala de propósito — ver btn-leave, que desarma isso).
+// Se o servidor cair DEPOIS de já estar na sala, tenta reconectar sozinho a
+// cada 5s até voltar (ou até a pessoa sair da sala de propósito — ver
+// btn-leave, que desarma isso). Antes de entrar pela primeira vez (ver
+// hasEnteredRoom acima), uma falha não entra nesse loop — só mostra o erro
+// na tela de login e deixa a pessoa tentar de novo manualmente.
 let manualDisconnect = false
 let reconnectTimer = null
 let isReconnecting = false
@@ -359,6 +390,15 @@ function connectWebSocket() {
 
   state.ws.onopen = () => {
     sendWS({ type: 'join-room', username: state.myName })
+
+    if (!hasEnteredRoom) {
+      // Primeira conexão bem-sucedida desta entrada — só agora troca de tela.
+      hasEnteredRoom = true
+      $('display-room-id').textContent = state.roomId
+      showScreen('room')
+      setLoginButtonsDisabled(false)
+    }
+
     toast(isReconnecting ? 'Reconectado à sala!' : 'Conectado à sala!')
     isReconnecting = false
     startPing()
@@ -368,7 +408,9 @@ function connectWebSocket() {
 
   state.ws.onerror = () => {
     appLog('ERROR', `Erro de conexão WebSocket com ${url}`)
-    if (!isReconnecting) toast('Erro de conexão com o servidor.')
+    // Antes de entrar, quem avisa é o onclose (mostra erro na tela de
+    // login) — evita toast duplicado pro mesmo problema.
+    if (hasEnteredRoom && !isReconnecting) toast('Erro de conexão com o servidor.')
   }
 
   state.ws.onclose = () => {
@@ -381,6 +423,14 @@ function connectWebSocket() {
     stopPing()
 
     if (manualDisconnect) return
+
+    if (!hasEnteredRoom) {
+      // Nunca chegou a entrar — fica na tela de login com o erro, sem
+      // ficar tentando reconectar sozinho (só quando a pessoa tentar de novo).
+      showError('Não foi possível conectar ao servidor. Verifique o endereço.')
+      setLoginButtonsDisabled(false)
+      return
+    }
 
     // Só avisa uma vez quando cai — não fica repetindo toast a cada
     // tentativa de reconexão que falha (checa de 5 em 5s até voltar).
@@ -422,12 +472,16 @@ function handlePong(payload) {
   updatePingUI(Date.now() - sentAt)
 }
 
+const PING_HISTORY_MAX = 20 // ~1min de histórico (ping a cada 3s)
+
 function updatePingUI(ms) {
   const box = $('ping-box')
   const msEl = $('ping-ms')
   if (ms == null) {
     box.dataset.level = '0'
     msEl.textContent = '-- ms'
+    state.pingHistory = []
+    updatePingDetail()
     return
   }
   msEl.textContent = `${ms} ms`
@@ -436,6 +490,43 @@ function updatePingUI(ms) {
   else if (ms > 200) level = 2
   else if (ms > 100) level = 3
   box.dataset.level = String(level)
+
+  state.pingHistory.push(ms)
+  if (state.pingHistory.length > PING_HISTORY_MAX) state.pingHistory.shift()
+  updatePingDetail()
+}
+
+// Popover de detalhe (hover no ping-box) — mantido atualizado mesmo
+// escondido, é só CSS (:hover) que decide quando mostrar.
+function updatePingDetail() {
+  const history = state.pingHistory
+  const now = history[history.length - 1]
+
+  $('ping-detail-now').textContent = now != null ? `${now} ms` : '-- ms'
+  if (history.length > 0) {
+    const avg = Math.round(history.reduce((a, b) => a + b, 0) / history.length)
+    $('ping-detail-avg').textContent = `${avg} ms`
+    $('ping-detail-minmax').textContent = `${Math.min(...history)} / ${Math.max(...history)} ms`
+  } else {
+    $('ping-detail-avg').textContent = '-- ms'
+    $('ping-detail-minmax').textContent = '-- / -- ms'
+  }
+
+  const svg = $('ping-graph')
+  if (history.length < 2) {
+    svg.innerHTML = ''
+    return
+  }
+  const w = 100, h = 28, pad = 2
+  const max = Math.max(...history)
+  const min = Math.min(...history)
+  const range = Math.max(max - min, 1) // evita divisão por zero com ping constante
+  const points = history.map((v, i) => {
+    const x = (i / (history.length - 1)) * w
+    const y = h - pad - ((v - min) / range) * (h - pad * 2)
+    return `${x.toFixed(1)},${y.toFixed(1)}`
+  }).join(' ')
+  svg.innerHTML = `<polyline points="${points}" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round" />`
 }
 
 // ──────────────────────────────────────────────
