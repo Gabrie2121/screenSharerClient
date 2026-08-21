@@ -596,6 +596,13 @@ input[type="text"]::placeholder { color: var(--text3); }
 }
 .pv-row { display: flex; align-items: center; gap: 8px; }
 .pv-row .vol-slider { flex: 1; }
+.pv-row output {
+  min-width: 36px;
+  color: var(--accent);
+  font-family: var(--mono);
+  font-size: 12px;
+  text-align: right;
+}
 
 /* ═══════════════════════════════════════════
    PRÉVIA AO PASSAR O MOUSE (participante compartilhando, na sidebar)
@@ -1167,7 +1174,6 @@ input[type="text"]::placeholder { color: var(--text3); }
    teste de microfone, que também tem o meter embaixo do botão. */
 .settings-row-column { flex-direction: column; align-items: stretch; gap: 10px; }
 
-.master-volume-slider { width: 130px; accent-color: var(--accent); cursor: pointer; }
 .noise-intensity-control { display: flex; align-items: center; gap: 12px; width: 100%; }
 .noise-intensity-control input { flex: 1; accent-color: var(--accent); cursor: pointer; }
 .noise-intensity-control output {

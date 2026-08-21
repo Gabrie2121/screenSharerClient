@@ -203,12 +203,15 @@
             <select id="select-speaker" class="quality-select-inline"></select>
           </div>
 
-          <div class="settings-row">
+          <div class="settings-row settings-row-column">
             <div class="settings-row-text">
               <span class="settings-row-label">Volume geral</span>
-              <span class="settings-row-hint">Afeta o volume de todos os participantes no chat de voz.</span>
+              <span class="settings-row-hint">Afeta o volume de todos</span>
             </div>
-            <input type="range" id="master-volume-slider" class="master-volume-slider" min="0" max="100" value="100" />
+            <div class="noise-intensity-control">
+              <input type="range" id="master-volume-slider" min="0" max="100" value="100" />
+              <output id="master-volume-value" for="master-volume-slider">100%</output>
+            </div>
           </div>
 
           <label class="settings-row">
@@ -339,7 +342,8 @@
     <div class="pv-header" id="pv-username">Participante</div>
     <div class="pv-row">
       <button type="button" class="vol-icon" id="pv-mute-btn" title="Mutar/Desmutar">🔊</button>
-      <input type="range" class="vol-slider" id="pv-slider" min="0" max="100" value="100" />
+      <input type="range" class="vol-slider" id="pv-slider" min="0" max="200" value="100" />
+      <output id="pv-value" for="pv-slider">100%</output>
     </div>
   </div>
 

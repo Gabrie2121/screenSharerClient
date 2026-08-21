@@ -109,6 +109,11 @@ const state = {
   // <audio> criado em runtime por participante, só pra tocar o mic dele
   // (ver createVoicePeer/ontrack) — nunca aparece na tela.
   voiceAudioEls: {},
+  // Stream crua de cada participante, exatamente como chegou do WebRTC —
+  // guardada à parte porque o <audio> às vezes toca ela diretamente e às
+  // vezes toca a versão passada pelo GainNode (ver applyVoiceVolume/
+  // setupVoiceAmplifier), dependendo se o volume pedido passa de 100%.
+  voiceRawStreams: {},
   // Minha captura de microfone — uma só, compartilhada com todas as
   // conexões de voz (o mesmo MediaStreamTrack é adicionado em cada uma).
   localMicStream: null,
@@ -116,7 +121,11 @@ const state = {
   micMuted: sessionStorage.getItem(MIC_MUTED_KEY) === 'true',
   micDeviceId: sessionStorage.getItem(MIC_DEVICE_KEY) || '',
   speakerDeviceId: sessionStorage.getItem(SPEAKER_DEVICE_KEY) || '',
-  masterVolume: Number(sessionStorage.getItem(MASTER_VOLUME_KEY) ?? 100),
+  // Só o volume POR PARTICIPANTE (ver participantVolumes abaixo) amplifica
+  // além de 100% — o geral serve pra abaixar tudo de uma vez, por isso fica
+  // travado em 0-100 (o Math.min cobre quem tinha um valor antigo >100
+  // salvo de uma versão anterior deste slider).
+  masterVolume: Math.min(100, Number(sessionStorage.getItem(MASTER_VOLUME_KEY) ?? 100)),
   noiseSuppression: sessionStorage.getItem(NOISE_SUPPRESSION_KEY) !== 'false',
   noiseIntensity: Number(sessionStorage.getItem(NOISE_INTENSITY_KEY) ?? 85),
   // Volume individual que EU escolhi pra ouvir cada participante (local,
@@ -809,7 +818,7 @@ function makeParticipantItem(uid, name, sharing, isMe) {
       <div class="participant-status ${sharing ? 'sharing' : ''}">${statusText}</div>
     </div>
     ${!isMe
-      ? `<span class="participant-vol-indicator" title="Volume: ${vol}% — clique para ajustar">${vol === 0 ? '🔇' : '🔊'}</span>`
+      ? `<span class="participant-vol-indicator" title="Volume: ${vol}% — clique para ajustar">${vol === 0 ? '🔇' : (vol > 100 ? '📢' : '🔊')}</span>`
       : ''}
     ${(!isMe && sharing)
       ? `<button class="btn-watch ${watching ? 'watching' : ''} ${connecting ? 'connecting' : ''}" data-uid="${uid}">
@@ -1232,13 +1241,12 @@ function createVoicePeer(remoteId) {
       applyOutputDevice(audioEl)
     }
 
-    if (audioEl.srcObject !== stream) {
-      audioEl.srcObject = stream
-      applyVoiceVolume(remoteId)
-      audioEl.play().catch((err) => {
-        console.warn(`[VOICE] Autoplay bloqueado para ${remoteId}:`, err)
-      })
-    }
+    // Guarda a stream crua e descarta qualquer cadeia de ganho antiga (uma
+    // reconexão manda uma stream nova) — quem decide se toca ela direto ou
+    // passa pelo GainNode é applyVoiceVolume, de acordo com o volume atual.
+    state.voiceRawStreams[remoteId] = stream
+    removeVoiceAmplifier(remoteId)
+    applyVoiceVolume(remoteId)
 
     setupRemoteVoiceAnalyser(remoteId, stream)
   }
@@ -1288,7 +1296,10 @@ function closeVoicePeer(uid) {
     audioEl.remove()
     delete state.voiceAudioEls[uid]
   }
+  delete state.voiceRawStreams[uid]
+  removeVoiceAmplifier(uid)
   removeVoiceAnalyser(uid)
+  removeRemoteVoiceSource(uid)
   state.speaking.delete(uid)
   updateSpeakingIndicators()
 }
@@ -1320,19 +1331,90 @@ $('chk-mic-muted').onchange = () => {
   applyMicMuteState()
 }
 
+// ── Amplificador de voz — GainNode por participante, só quando precisa ──
+// HTMLMediaElement.volume só aceita 0–1 (0–100%): jogar 1.5 ali dá exceção.
+// Então, ATÉ 100%, o <audio> toca a stream crua do WebRTC direto — igual
+// sempre funcionou — e só ganha ao Web Audio quando o volume pedido passa
+// de 100% (ver applyVoiceVolume), caso em que uma cadeia
+// GainNode→DynamicsCompressorNode→MediaStreamDestination amplifica de
+// verdade antes de chegar no <audio> (o compressor evita estourar/distorcer
+// perto de 200%). Isso mantém o caso comum (0–100%) livre de qualquer
+// dependência do Web Audio, sem risco de regressão nele.
+// Usa a MESMA fonte compartilhada do analisador (ver getRemoteVoiceSource
+// acima) — nunca cria uma segunda fonte pra mesma stream.
+// voiceGainNodes: uid -> { source, gain, compressor, dest }
+const voiceGainNodes = {}
+
+function setupVoiceAmplifier(uid, stream) {
+  try {
+    const ctx = getVoiceAudioContext()
+    const source = getRemoteVoiceSource(uid, stream)
+    const gain = ctx.createGain()
+    const compressor = ctx.createDynamicsCompressor()
+    const dest = ctx.createMediaStreamDestination()
+    source.connect(gain)
+    gain.connect(compressor)
+    compressor.connect(dest)
+    voiceGainNodes[uid] = { source, gain, compressor, dest }
+    return dest.stream
+  } catch (err) {
+    console.warn(`[VOICE AMP] Falha ao montar cadeia de ganho para ${uid}, ficando limitado a 100%:`, err)
+    return null
+  }
+}
+
+function removeVoiceAmplifier(uid) {
+  const chain = voiceGainNodes[uid]
+  if (!chain) return
+  // Só desconecta a ligação fonte→ganho — a fonte é compartilhada com o
+  // analisador de "quem está falando" (ver getRemoteVoiceSource), então um
+  // disconnect() sem alvo na fonte cortaria a análise de voz junto.
+  try { chain.source.disconnect(chain.gain) } catch { /* já desconectado */ }
+  try { chain.gain.disconnect() } catch { /* já desconectado */ }
+  try { chain.compressor.disconnect() } catch { /* já desconectado */ }
+  delete voiceGainNodes[uid]
+}
+
 // ── Volume por participante (local — não afeta o que os outros ouvem) ──
+// Vai de 0% a 200%: 100% é o volume original recebido, e dali pra cima
+// amplifica de verdade (não é só "desmutar mais alto") via GainNode acima.
 function getParticipantVolume(uid) {
   return state.participantVolumes[uid] ?? 100
 }
 
 function applyVoiceVolume(uid) {
   const audioEl = state.voiceAudioEls[uid]
-  if (audioEl) {
-    const vol = getParticipantVolume(uid)
-    const effective = (state.masterVolume / 100) * (vol / 100)
+  const rawStream = state.voiceRawStreams[uid]
+  if (!audioEl || !rawStream) { updateParticipantVolIndicator(uid); return }
+
+  const vol = getParticipantVolume(uid)
+  const effective = (state.masterVolume / 100) * (vol / 100)
+
+  if (effective <= 1) {
+    // Caminho direto, sem Web Audio — o mesmo que já funcionava antes do
+    // amplificador existir, e continua sendo o padrão até 100%.
+    removeVoiceAmplifier(uid)
+    if (audioEl.srcObject !== rawStream) {
+      audioEl.srcObject = rawStream
+      audioEl.play().catch((err) => console.warn(`[VOICE] Autoplay bloqueado para ${uid}:`, err))
+    }
     audioEl.volume = effective
-    audioEl.muted = effective === 0
+  } else {
+    // >100% — o <audio> sozinho não sobe daqui, precisa do GainNode.
+    audioEl.volume = 1
+    let chain = voiceGainNodes[uid]
+    if (!chain) {
+      const amplifiedStream = setupVoiceAmplifier(uid, rawStream)
+      chain = voiceGainNodes[uid]
+      if (amplifiedStream && audioEl.srcObject !== amplifiedStream) {
+        audioEl.srcObject = amplifiedStream
+        audioEl.play().catch((err) => console.warn(`[VOICE] Autoplay bloqueado para ${uid}:`, err))
+      }
+    }
+    if (chain) chain.gain.gain.setTargetAtTime(effective, chain.gain.context.currentTime, 0.01)
   }
+
+  audioEl.muted = effective === 0
   updateParticipantVolIndicator(uid)
 }
 
@@ -1344,7 +1426,10 @@ function updateParticipantVolIndicator(uid) {
   const el = document.querySelector(`.participant-item[data-uid="${uid}"] .participant-vol-indicator`)
   if (!el) return
   const vol = getParticipantVolume(uid)
-  el.textContent = vol === 0 ? '🔇' : '🔊'
+  // Acima de 100% é amplificação de verdade (ganho > 1×, ver
+  // setupVoiceAmplifier) — o ícone de megafone deixa isso visível de longe,
+  // sem precisar abrir o popover pra ver o número.
+  el.textContent = vol === 0 ? '🔇' : (vol > 100 ? '📢' : '🔊')
   el.title = vol === 0 ? 'Mutado — clique para ajustar' : `Volume: ${vol}% — clique para ajustar`
 }
 
@@ -1373,6 +1458,7 @@ function openParticipantVolumePopover(uid, li) {
   $('pv-username').textContent = state.users[uid]?.username || 'Participante'
   const vol = getParticipantVolume(uid)
   $('pv-slider').value = vol
+  $('pv-value').textContent = `${vol}%`
   updatePvMuteIcon(vol)
 }
 
@@ -1383,7 +1469,7 @@ function closeParticipantVolumePopover() {
 
 function updatePvMuteIcon(vol) {
   const icon = $('pv-mute-btn')
-  icon.textContent = vol === 0 ? '🔇' : '🔊'
+  icon.textContent = vol === 0 ? '🔇' : (vol > 100 ? '📢' : '🔊')
   icon.classList.toggle('muted', vol === 0)
 }
 
@@ -1394,6 +1480,7 @@ $('pv-slider').addEventListener('input', () => {
   if (v > 0) state.participantLastVolume[volumePopoverUid] = v
   state.participantVolumes[volumePopoverUid] = v
   applyVoiceVolume(volumePopoverUid)
+  $('pv-value').textContent = `${v}%`
   updatePvMuteIcon(v)
 })
 
@@ -1410,6 +1497,7 @@ $('pv-mute-btn').addEventListener('click', (e) => {
   const newVol = state.participantVolumes[volumePopoverUid]
   applyVoiceVolume(volumePopoverUid)
   $('pv-slider').value = newVol
+  $('pv-value').textContent = `${newVol}%`
   updatePvMuteIcon(newVol)
 })
 
@@ -1449,11 +1537,36 @@ function setupLocalVoiceAnalyser(stream) {
   }
 }
 
+// Um único MediaStreamAudioSourceNode por stream remota, compartilhado entre
+// o analisador de "quem está falando" (abaixo) e o amplificador de voz (ver
+// setupVoiceAmplifier) — dois source nodes puxando a MESMA MediaStream ao
+// mesmo tempo é instável no Chromium (o segundo fica mudo em vez de dar
+// erro), e foi exatamente isso que travava o áudio ao passar de 100%: o
+// amplificador criava sua própria fonte, concorrendo com a do analisador.
+// uid -> { source, stream }
+const remoteVoiceSources = {}
+
+function getRemoteVoiceSource(uid, stream) {
+  const ctx = getVoiceAudioContext()
+  const entry = remoteVoiceSources[uid]
+  if (entry && entry.stream === stream) return entry.source
+  if (entry) { try { entry.source.disconnect() } catch { /* já desconectado */ } }
+  const source = ctx.createMediaStreamSource(stream)
+  remoteVoiceSources[uid] = { source, stream }
+  return source
+}
+
+function removeRemoteVoiceSource(uid) {
+  const entry = remoteVoiceSources[uid]
+  if (!entry) return
+  try { entry.source.disconnect() } catch { /* já desconectado */ }
+  delete remoteVoiceSources[uid]
+}
+
 function setupRemoteVoiceAnalyser(uid, stream) {
   try {
-    const ctx = getVoiceAudioContext()
-    const source = ctx.createMediaStreamSource(stream)
-    const analyser = ctx.createAnalyser()
+    const source = getRemoteVoiceSource(uid, stream)
+    const analyser = getVoiceAudioContext().createAnalyser()
     analyser.fftSize = 512
     source.connect(analyser)
     voiceAnalysers[uid] = { analyser, dataArray: new Uint8Array(analyser.fftSize) }
@@ -1596,10 +1709,16 @@ async function applyOutputDevice(audioEl) {
 }
 
 // ── Volume geral (Configurações → Áudio) ──
+// Vai só de 0% a 100% — quem amplifica além disso é o volume individual de
+// cada participante (ver participantVolumes/applyVoiceVolume). Este aqui só
+// abaixa tudo de uma vez, sem perder o ajuste fino de cada um.
 const masterVolumeSlider = $('master-volume-slider')
+const masterVolumeValue = $('master-volume-value')
 masterVolumeSlider.value = state.masterVolume
+masterVolumeValue.textContent = `${state.masterVolume}%`
 masterVolumeSlider.addEventListener('input', () => {
   state.masterVolume = Number(masterVolumeSlider.value)
+  masterVolumeValue.textContent = `${state.masterVolume}%`
   sessionStorage.setItem(MASTER_VOLUME_KEY, String(state.masterVolume))
   applyAllVoiceVolumes()
 })
@@ -1641,7 +1760,11 @@ async function startMicTest() {
     const audioEl = $('mic-test-audio')
     audioEl.srcObject = micTestStream
     audioEl.muted = false
-    audioEl.volume = state.masterVolume / 100
+    // HTMLMediaElement.volume só aceita 0–1 — o volume geral fica travado
+    // em 0-100% (ver state.masterVolume), mas o Math.min é uma rede de
+    // segurança pra não derrubar o teste com "IndexSizeError: value must
+    // be in [0, 1]" caso sobre algum valor antigo >100 salvo no navegador.
+    audioEl.volume = Math.min(1, state.masterVolume / 100)
     await applyOutputDevice(audioEl)
     await audioEl.play().catch(() => {})
 
