@@ -1,9 +1,9 @@
 {
   "name": "screen-share-electron",
-  "version": "0.1.11",
+  "version": "0.1.13-dev.0",
   "author": {
-  "name": "Gabriel Miranda",
-  "email": "gabriel.miranda041200@gmail.com"
+    "name": "Gabriel Miranda",
+    "email": "gabriel.miranda041200@gmail.com"
   },
   "description": "Compartilhamento de tela via WebRTC",
   "main": "src/main.js",
@@ -30,7 +30,9 @@
       "createDesktopShortcut": true
     },
     "linux": {
-      "target": ["rpm"],
+      "target": [
+        "rpm"
+      ],
       "category": "Network",
       "synopsis": "Compartilhamento de tela via WebRTC",
       "icon": "src/assets/icon.png"

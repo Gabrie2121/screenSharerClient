@@ -1609,6 +1609,22 @@ $('modal-settings').onclick = (e) => {
   }
 }
 
+document.querySelectorAll('.settings-tab').forEach((tab) => {
+  tab.onclick = () => {
+    const selectedTab = tab.dataset.settingsTab
+    document.querySelectorAll('.settings-tab').forEach((item) => {
+      const isActive = item === tab
+      item.classList.toggle('active', isActive)
+      item.setAttribute('aria-selected', String(isActive))
+    })
+    document.querySelectorAll('.settings-panel').forEach((panel) => {
+      const isActive = panel.id === `settings-${selectedTab}`
+      panel.classList.toggle('active', isActive)
+      panel.hidden = !isActive
+    })
+  }
+})
+
 // Autovisualização — opcional, canto inferior direito, sempre mudo.
 // Preferência salva em sessionStorage e usada como padrão dali pra frente.
 const chkSelfPreview = $('chk-self-preview')

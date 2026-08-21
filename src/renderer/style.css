@@ -1097,10 +1097,46 @@ input[type="text"]::placeholder { color: var(--text3); }
 /* ═══════════════════════════════════════════
    MODAL DE CONFIGURAÇÕES
 ═══════════════════════════════════════════ */
-.modal-settings { width: 420px; }
+.modal-settings {
+  width: min(760px, calc(100vw - 48px));
+  max-height: min(760px, calc(100vh - 72px));
+}
+.settings-tabs {
+  display: flex;
+  gap: 4px;
+  padding: 10px 20px 0;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg2);
+}
+.settings-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 132px;
+  justify-content: center;
+  padding: 11px 16px 12px;
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: var(--text2);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: color .15s, border-color .15s, background .15s;
+}
+.settings-tab:hover { color: var(--text); background: var(--bg3); }
+.settings-tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+.settings-tab-icon { font-size: 15px; line-height: 1; }
 .settings-body {
-  padding: 8px 20px 20px;
+  padding: 8px 28px 24px;
   overflow-y: auto;
+}
+.settings-panel { display: none; animation: settings-panel-in .18s ease-out; }
+.settings-panel.active { display: block; }
+@keyframes settings-panel-in {
+  from { opacity: 0; transform: translateY(3px); }
+  to { opacity: 1; transform: translateY(0); }
 }
 .settings-section-title {
   font-size: 11px;
@@ -1124,12 +1160,23 @@ input[type="text"]::placeholder { color: var(--text3); }
 .settings-row-text { display: flex; flex-direction: column; gap: 3px; }
 .settings-row-label { font-size: 13px; color: var(--text); font-weight: 500; }
 .settings-row-hint { font-size: 11px; color: var(--text3); line-height: 1.4; }
+.settings-row-text { flex: 1; min-width: 0; }
+.settings-row > .quality-select-inline { width: 220px; flex-shrink: 0; }
 
 /* Linha que empilha texto + controle (em vez de lado a lado) — usada pelo
    teste de microfone, que também tem o meter embaixo do botão. */
 .settings-row-column { flex-direction: column; align-items: stretch; gap: 10px; }
 
 .master-volume-slider { width: 130px; accent-color: var(--accent); cursor: pointer; }
+
+@media (max-width: 640px) {
+  .modal-settings { width: calc(100vw - 24px); max-height: calc(100vh - 52px); }
+  .settings-tabs { padding-left: 12px; padding-right: 12px; }
+  .settings-tab { flex: 1; min-width: 0; }
+  .settings-body { padding-left: 16px; padding-right: 16px; }
+  .settings-row { align-items: flex-start; }
+  .settings-row > .quality-select-inline { width: 150px; }
+}
 
 /* Nível do microfone durante o teste (ver runMicTestMeter em app.js) */
 .mic-test-meter {

@@ -173,9 +173,19 @@
         <button class="icon-btn" id="btn-close-settings">✕</button>
       </div>
 
+      <div class="settings-tabs" role="tablist" aria-label="Categorias de configurações">
+        <button type="button" class="settings-tab active" role="tab" aria-selected="true" aria-controls="settings-audio" data-settings-tab="audio">
+          <span class="settings-tab-icon">🎙</span> Áudio
+        </button>
+        <button type="button" class="settings-tab" role="tab" aria-selected="false" aria-controls="settings-video" data-settings-tab="video">
+          <span class="settings-tab-icon">▣</span> Vídeo
+        </button>
+      </div>
+
       <div class="settings-body">
-        <div class="settings-section">
-          <h3 class="settings-section-title">Áudio</h3>
+        <div class="settings-panel active" id="settings-audio" role="tabpanel">
+          <div class="settings-section">
+            <h3 class="settings-section-title">Dispositivos e voz</h3>
 
           <div class="settings-row">
             <div class="settings-row-text">
@@ -222,10 +232,12 @@
               <div id="mic-test-meter-fill" class="mic-test-meter-fill"></div>
             </div>
           </div>
+          </div>
         </div>
 
-        <div class="settings-section">
-          <h3 class="settings-section-title">Live</h3>
+        <div class="settings-panel" id="settings-video" role="tabpanel" hidden>
+          <div class="settings-section">
+            <h3 class="settings-section-title">Vídeo e transmissão</h3>
 
           <label class="settings-row">
             <div class="settings-row-text">
@@ -250,6 +262,7 @@
               <option value="480">480p</option>
               <option value="360">360p</option>
             </select>
+          </div>
           </div>
         </div>
       </div>
