@@ -14,6 +14,12 @@ const SELF_PREVIEW_KEY = 'sharesync:show-self-preview'
 const DEFAULT_WATCH_QUALITY_KEY = 'sharesync:default-watch-quality'
 const SHARE_AUDIO_KEY = 'sharesync:share-audio'
 
+// Chat de voz — preferências persistidas (ver seção "CHAT DE VOZ" abaixo)
+const MIC_MUTED_KEY = 'sharesync:mic-muted'
+const MIC_DEVICE_KEY = 'sharesync:mic-device'
+const SPEAKER_DEVICE_KEY = 'sharesync:speaker-device'
+const MASTER_VOLUME_KEY = 'sharesync:master-volume'
+
 const state = {
   myId:      null,
   myName:    '',
@@ -90,6 +96,32 @@ const state = {
   // manda um novo a cada 3min (ver captureAndSendSnapshot).
   screenSnapshots: {},
   snapshotInterval: null,
+
+  // ── CHAT DE VOZ ──
+  // Uma RTCPeerConnection bidirecional por participante (mic vai e vem na
+  // mesma conexão — diferente do compartilhamento de tela, que é sempre
+  // uma via só). Mapas separados de watchPeers/sharePeers acima.
+  voicePeers: {},
+  // <audio> criado em runtime por participante, só pra tocar o mic dele
+  // (ver createVoicePeer/ontrack) — nunca aparece na tela.
+  voiceAudioEls: {},
+  // Minha captura de microfone — uma só, compartilhada com todas as
+  // conexões de voz (o mesmo MediaStreamTrack é adicionado em cada uma).
+  localMicStream: null,
+  micMuted: sessionStorage.getItem(MIC_MUTED_KEY) === 'true',
+  micDeviceId: sessionStorage.getItem(MIC_DEVICE_KEY) || '',
+  speakerDeviceId: sessionStorage.getItem(SPEAKER_DEVICE_KEY) || '',
+  masterVolume: Number(sessionStorage.getItem(MASTER_VOLUME_KEY) ?? 100),
+  // Volume individual que EU escolhi pra ouvir cada participante (local,
+  // não afeta o que os outros ouvem) — 0-100, 100 é o padrão.
+  participantVolumes: {},
+  // Guarda o último volume não-zero de cada participante, pra restaurar ao
+  // desmutar (mesma ideia do lastVolume nos cards de stream).
+  participantLastVolume: {},
+  // Quem está falando agora (chat de voz) — inclui o próprio usuário.
+  // Preenchido por detecção local de volume (ver startSpeakingLoop),
+  // nenhuma mensagem nova de WebSocket é necessária pra isso.
+  speaking: new Set(),
 }
 
 // ──────────────────────────────────────────────
@@ -425,8 +457,17 @@ function connectWebSocket() {
     // Limpa peers
     Object.values(state.watchPeers).forEach(pc => pc.close())
     Object.values(state.sharePeers).forEach(pc => pc.close())
+    Object.values(state.voicePeers).forEach(pc => pc.close())
     state.watchPeers = {}
     state.sharePeers = {}
+    state.voicePeers = {}
+    // O microfone continua capturado (não precisa pedir permissão de novo
+    // ao reconectar) — só as conexões de voz com cada participante caem,
+    // e são refeitas quando a sala reenviar 'room-info' (ver initVoiceChat).
+    Object.keys(state.voiceAudioEls).forEach(uid => state.voiceAudioEls[uid]?.remove())
+    state.voiceAudioEls = {}
+    Object.keys(voiceAnalysers).forEach(key => { if (key !== '__self__') delete voiceAnalysers[key] })
+    state.speaking.clear()
     stopPing()
 
     if (manualDisconnect) return
@@ -552,6 +593,10 @@ async function handleMessage(msg) {
         }
       }
       renderParticipants()
+      // Chat de voz: só quem ACABOU de entrar inicia a oferta pros que já
+      // estavam na sala (ver initVoiceChat) — evita duas ofertas
+      // simultâneas (glare) entre o mesmo par de usuários.
+      initVoiceChat()
       break
 
     // Novo usuário entrou
@@ -605,16 +650,23 @@ async function handleMessage(msg) {
       break
 
     // ── WebRTC ──
+    // offer/answer/ice-candidate são compartilhados entre o compartilhamento
+    // de tela e o chat de voz (ver context.MD → Fluxo WebSocket); o campo
+    // payload.kind === 'voice' diz qual dos dois é — sem isso, os dois
+    // tipos de negociação (tela e voz) com a MESMA pessoa se confundiriam.
     case 'offer':
-      await handleOffer(msg.from, msg.payload)
+      if (msg.payload?.kind === 'voice') await handleVoiceOffer(msg.from, msg.payload)
+      else await handleOffer(msg.from, msg.payload)
       break
 
     case 'answer':
-      await handleAnswer(msg.from, msg.payload)
+      if (msg.payload?.kind === 'voice') await handleVoiceAnswer(msg.from, msg.payload)
+      else await handleAnswer(msg.from, msg.payload)
       break
 
     case 'ice-candidate':
-      await handleIceCandidate(msg.from, msg.payload)
+      if (msg.payload?.kind === 'voice') await handleVoiceIceCandidate(msg.from, msg.payload)
+      else await handleIceCandidate(msg.from, msg.payload)
       break
 
     // Quem está assistindo pediu outra resolução (economia de banda)
@@ -666,12 +718,17 @@ function makeParticipantItem(uid, name, sharing, isMe) {
   const connecting = state.connecting.has(uid)
   const watchLabel = connecting ? 'Conectando…' : (watching ? 'Parar de assistir' : 'Assistir')
 
+  const vol = getParticipantVolume(uid)
+
   li.innerHTML = `
     <div class="participant-avatar">${initial}</div>
     <div class="participant-info">
       <div class="participant-name">${name}${isMe ? ' (você)' : ''}</div>
       <div class="participant-status ${sharing ? 'sharing' : ''}">${statusText}</div>
     </div>
+    ${!isMe
+      ? `<span class="participant-vol-indicator" title="Volume: ${vol}% — clique para ajustar">${vol === 0 ? '🔇' : '🔊'}</span>`
+      : ''}
     ${(!isMe && sharing)
       ? `<button class="btn-watch ${watching ? 'watching' : ''} ${connecting ? 'connecting' : ''}" data-uid="${uid}">
            ${watchLabel}
@@ -681,7 +738,17 @@ function makeParticipantItem(uid, name, sharing, isMe) {
 
   const watchBtn = li.querySelector('.btn-watch')
   if (watchBtn) {
-    watchBtn.onclick = () => toggleWatch(uid)
+    watchBtn.onclick = (e) => {
+      e.stopPropagation() // não deixa isso também abrir o popover de volume (ver abaixo)
+      toggleWatch(uid)
+    }
+  }
+
+  // Clicar em qualquer parte do participante (menos o botão de assistir)
+  // abre/fecha o popover de volume do chat de voz (ver
+  // openParticipantVolumePopover — mesmo slider usado nos cards de stream).
+  if (!isMe) {
+    li.addEventListener('click', () => toggleParticipantVolumePopover(uid, li))
   }
 
   // Prévia ao passar o mouse — só funciona pra quem você já está
@@ -993,6 +1060,521 @@ function closeSharePeer(uid) {
   delete state.sharePeers[uid]
 }
 
+// ══════════════════════════════════════════════════════════════
+// CHAT DE VOZ
+// Reaproveita a mesma sinalização WebRTC do compartilhamento de tela
+// (offer/answer/ice-candidate, ver context.MD → Fluxo WebSocket e o
+// dispatcher em handleMessage) — o que muda é payload.kind: 'voice' e o
+// fato de a conexão ser bidirecional (cada RTCPeerConnection já manda E
+// recebe áudio, ao contrário de watchPeers/sharePeers que são unidirecionais).
+//
+// Quem inicia a oferta: só quem ACABA de entrar na sala, pra cada membro
+// já existente (ver initVoiceChat, chamado no 'room-info'). Quem já
+// estava na sala nunca oferta pro recém-chegado — só responde a oferta
+// dele. Isso evita duas ofertas simultâneas (glare) entre o mesmo par.
+// ══════════════════════════════════════════════════════════════
+
+async function initVoiceChat() {
+  await ensureLocalMicStream()
+  applyMicMuteState()
+  startSpeakingLoop()
+  for (const uid of Object.keys(state.users)) {
+    if (!state.voicePeers[uid]) startVoicePeerConnection(uid)
+  }
+}
+
+// Captura o microfone uma única vez por sessão de sala — a mesma
+// MediaStreamTrack é adicionada em todas as conexões de voz.
+async function ensureLocalMicStream() {
+  if (state.localMicStream) return state.localMicStream
+  try {
+    const constraints = {
+      audio: state.micDeviceId ? { deviceId: { exact: state.micDeviceId } } : true,
+      video: false,
+    }
+    const stream = await navigator.mediaDevices.getUserMedia(constraints)
+    stream.getAudioTracks().forEach(t => { t.enabled = !state.micMuted })
+    state.localMicStream = stream
+    setupLocalVoiceAnalyser(stream)
+    appLog('INFO', 'Microfone capturado — chat de voz ativo')
+    return stream
+  } catch (err) {
+    appLog('WARN', `Não foi possível acessar o microfone: ${err.message}`)
+    toast('Não foi possível acessar o microfone. O chat de voz ficará desativado.')
+    return null
+  }
+}
+
+function createVoicePeer(remoteId) {
+  if (state.voicePeers[remoteId]) {
+    state.voicePeers[remoteId].close()
+    delete state.voicePeers[remoteId]
+  }
+
+  const pc = new RTCPeerConnection(ICE_CONFIG)
+  state.voicePeers[remoteId] = pc
+
+  if (state.localMicStream) {
+    state.localMicStream.getAudioTracks().forEach(track => pc.addTrack(track, state.localMicStream))
+  }
+
+  pc.onicecandidate = (e) => {
+    if (e.candidate) {
+      sendWS({ type: 'ice-candidate', to: remoteId, payload: { candidate: e.candidate, kind: 'voice' } })
+    }
+  }
+
+  pc.onconnectionstatechange = () => {
+    console.log(`[VOICE CONN ${remoteId}]`, pc.connectionState)
+    if (pc.connectionState === 'failed' || pc.connectionState === 'closed') {
+      closeVoicePeer(remoteId)
+    }
+  }
+
+  // Bidirecional: a mesma conexão recebe o áudio de quem está do outro lado.
+  pc.ontrack = (e) => {
+    const stream = e.streams[0]
+    if (!stream) return
+
+    let audioEl = state.voiceAudioEls[remoteId]
+    if (!audioEl) {
+      audioEl = document.createElement('audio')
+      audioEl.autoplay = true
+      $('voice-audio-container').appendChild(audioEl)
+      state.voiceAudioEls[remoteId] = audioEl
+      applyOutputDevice(audioEl)
+    }
+
+    if (audioEl.srcObject !== stream) {
+      audioEl.srcObject = stream
+      applyVoiceVolume(remoteId)
+      audioEl.play().catch((err) => {
+        console.warn(`[VOICE] Autoplay bloqueado para ${remoteId}:`, err)
+      })
+    }
+
+    setupRemoteVoiceAnalyser(remoteId, stream)
+  }
+
+  return pc
+}
+
+async function startVoicePeerConnection(remoteId) {
+  await ensureLocalMicStream()
+  const pc = createVoicePeer(remoteId)
+  const offer = await pc.createOffer({ offerToReceiveAudio: true })
+  await pc.setLocalDescription(offer)
+  sendWS({ type: 'offer', to: remoteId, payload: { ...offer, kind: 'voice' } })
+}
+
+async function handleVoiceOffer(fromId, payload) {
+  await ensureLocalMicStream()
+  const pc = createVoicePeer(fromId)
+  await pc.setRemoteDescription(new RTCSessionDescription({ type: payload.type, sdp: payload.sdp }))
+  const answer = await pc.createAnswer()
+  await pc.setLocalDescription(answer)
+  sendWS({ type: 'answer', to: fromId, payload: { ...answer, kind: 'voice' } })
+}
+
+async function handleVoiceAnswer(fromId, payload) {
+  const pc = state.voicePeers[fromId]
+  if (!pc) return
+  await pc.setRemoteDescription(new RTCSessionDescription({ type: payload.type, sdp: payload.sdp }))
+}
+
+async function handleVoiceIceCandidate(fromId, payload) {
+  const pc = state.voicePeers[fromId]
+  if (!pc) return
+  try {
+    await pc.addIceCandidate(new RTCIceCandidate(payload.candidate))
+  } catch (e) {
+    console.warn('[VOICE ICE ERROR]', e)
+  }
+}
+
+function closeVoicePeer(uid) {
+  state.voicePeers[uid]?.close()
+  delete state.voicePeers[uid]
+  const audioEl = state.voiceAudioEls[uid]
+  if (audioEl) {
+    audioEl.srcObject = null
+    audioEl.remove()
+    delete state.voiceAudioEls[uid]
+  }
+  removeVoiceAnalyser(uid)
+  state.speaking.delete(uid)
+  updateSpeakingIndicators()
+}
+
+// ── Mutar/desmutar meu microfone (botão da sidebar + toggle nas
+//    Configurações, ambos controlam o mesmo estado) ──
+function applyMicMuteState() {
+  state.localMicStream?.getAudioTracks().forEach(t => { t.enabled = !state.micMuted })
+
+  const micBtn = $('btn-toggle-mic')
+  micBtn.classList.toggle('muted', state.micMuted)
+  micBtn.title = state.micMuted ? 'Ativar microfone' : 'Mutar microfone'
+  micBtn.querySelector('.mic-icon').textContent = state.micMuted ? '🔇' : '🎤'
+
+  const chk = $('chk-mic-muted')
+  if (chk) chk.checked = state.micMuted
+}
+
+$('btn-toggle-mic').onclick = async () => {
+  if (!state.localMicStream) await ensureLocalMicStream()
+  state.micMuted = !state.micMuted
+  sessionStorage.setItem(MIC_MUTED_KEY, String(state.micMuted))
+  applyMicMuteState()
+}
+
+$('chk-mic-muted').onchange = () => {
+  state.micMuted = $('chk-mic-muted').checked
+  sessionStorage.setItem(MIC_MUTED_KEY, String(state.micMuted))
+  applyMicMuteState()
+}
+
+// ── Volume por participante (local — não afeta o que os outros ouvem) ──
+function getParticipantVolume(uid) {
+  return state.participantVolumes[uid] ?? 100
+}
+
+function applyVoiceVolume(uid) {
+  const audioEl = state.voiceAudioEls[uid]
+  if (audioEl) {
+    const vol = getParticipantVolume(uid)
+    const effective = (state.masterVolume / 100) * (vol / 100)
+    audioEl.volume = effective
+    audioEl.muted = effective === 0
+  }
+  updateParticipantVolIndicator(uid)
+}
+
+function applyAllVoiceVolumes() {
+  Object.keys(state.voiceAudioEls).forEach(applyVoiceVolume)
+}
+
+function updateParticipantVolIndicator(uid) {
+  const el = document.querySelector(`.participant-item[data-uid="${uid}"] .participant-vol-indicator`)
+  if (!el) return
+  const vol = getParticipantVolume(uid)
+  el.textContent = vol === 0 ? '🔇' : '🔊'
+  el.title = vol === 0 ? 'Mutado — clique para ajustar' : `Volume: ${vol}% — clique para ajustar`
+}
+
+// Popover de volume (mesmo slider .vol-icon/.vol-slider dos cards de
+// stream) — painel fixo (não preso à lista, que tem scroll próprio),
+// posicionado ao lado do participante clicado.
+let volumePopoverUid = null
+
+function toggleParticipantVolumePopover(uid, li) {
+  const popover = $('participant-volume-popover')
+  if (volumePopoverUid === uid && !popover.classList.contains('hidden')) {
+    closeParticipantVolumePopover()
+  } else {
+    openParticipantVolumePopover(uid, li)
+  }
+}
+
+function openParticipantVolumePopover(uid, li) {
+  const popover = $('participant-volume-popover')
+  const rect = li.getBoundingClientRect()
+  popover.style.left = `${rect.right + 8}px`
+  popover.style.top = `${rect.top}px`
+  popover.classList.remove('hidden')
+  volumePopoverUid = uid
+
+  $('pv-username').textContent = state.users[uid]?.username || 'Participante'
+  const vol = getParticipantVolume(uid)
+  $('pv-slider').value = vol
+  updatePvMuteIcon(vol)
+}
+
+function closeParticipantVolumePopover() {
+  $('participant-volume-popover').classList.add('hidden')
+  volumePopoverUid = null
+}
+
+function updatePvMuteIcon(vol) {
+  const icon = $('pv-mute-btn')
+  icon.textContent = vol === 0 ? '🔇' : '🔊'
+  icon.classList.toggle('muted', vol === 0)
+}
+
+$('pv-slider').addEventListener('click', (e) => e.stopPropagation())
+$('pv-slider').addEventListener('input', () => {
+  if (!volumePopoverUid) return
+  const v = Number($('pv-slider').value)
+  if (v > 0) state.participantLastVolume[volumePopoverUid] = v
+  state.participantVolumes[volumePopoverUid] = v
+  applyVoiceVolume(volumePopoverUid)
+  updatePvMuteIcon(v)
+})
+
+$('pv-mute-btn').addEventListener('click', (e) => {
+  e.stopPropagation()
+  if (!volumePopoverUid) return
+  const current = getParticipantVolume(volumePopoverUid)
+  if (current > 0) {
+    state.participantLastVolume[volumePopoverUid] = current
+    state.participantVolumes[volumePopoverUid] = 0
+  } else {
+    state.participantVolumes[volumePopoverUid] = state.participantLastVolume[volumePopoverUid] || 100
+  }
+  const newVol = state.participantVolumes[volumePopoverUid]
+  applyVoiceVolume(volumePopoverUid)
+  $('pv-slider').value = newVol
+  updatePvMuteIcon(newVol)
+})
+
+$('participant-volume-popover').addEventListener('click', (e) => e.stopPropagation())
+
+// Clicar fora do popover (e fora de qualquer participante — que já tem seu
+// próprio toggle) fecha o painel.
+document.addEventListener('click', (e) => {
+  const popover = $('participant-volume-popover')
+  if (popover.classList.contains('hidden')) return
+  if (e.target.closest('.participant-item')) return
+  closeParticipantVolumePopover()
+})
+
+// ── Detecção de "quem está falando" — AnalyserNode local por stream de
+//    voz (incluindo o próprio microfone), sem precisar de nenhuma
+//    mensagem nova no WebSocket. ──
+let voiceAudioCtx = null
+function getVoiceAudioContext() {
+  if (!voiceAudioCtx) voiceAudioCtx = new AudioContext()
+  if (voiceAudioCtx.state === 'suspended') voiceAudioCtx.resume().catch(() => {})
+  return voiceAudioCtx
+}
+
+const voiceAnalysers = {} // uid (ou '__self__') -> { analyser, dataArray }
+
+function setupLocalVoiceAnalyser(stream) {
+  try {
+    const ctx = getVoiceAudioContext()
+    const source = ctx.createMediaStreamSource(stream)
+    const analyser = ctx.createAnalyser()
+    analyser.fftSize = 512
+    source.connect(analyser) // só análise — não conecta no destino (senão ecoaria o próprio mic)
+    voiceAnalysers['__self__'] = { analyser, dataArray: new Uint8Array(analyser.fftSize) }
+  } catch (err) {
+    console.warn('[VAD] Falha ao configurar análise do microfone local:', err)
+  }
+}
+
+function setupRemoteVoiceAnalyser(uid, stream) {
+  try {
+    const ctx = getVoiceAudioContext()
+    const source = ctx.createMediaStreamSource(stream)
+    const analyser = ctx.createAnalyser()
+    analyser.fftSize = 512
+    source.connect(analyser)
+    voiceAnalysers[uid] = { analyser, dataArray: new Uint8Array(analyser.fftSize) }
+  } catch (err) {
+    console.warn(`[VAD] Falha ao configurar análise de voz de ${uid}:`, err)
+  }
+}
+
+function removeVoiceAnalyser(uid) { delete voiceAnalysers[uid] }
+
+const SPEAKING_THRESHOLD = 0.02 // RMS mínimo pra considerar "falando"
+let speakingLoopTimer = null
+
+function startSpeakingLoop() {
+  if (speakingLoopTimer) return
+  speakingLoopTimer = setInterval(() => {
+    let changed = false
+    for (const [key, { analyser, dataArray }] of Object.entries(voiceAnalysers)) {
+      analyser.getByteTimeDomainData(dataArray)
+      let sum = 0
+      for (let i = 0; i < dataArray.length; i++) {
+        const v = (dataArray[i] - 128) / 128
+        sum += v * v
+      }
+      const rms = Math.sqrt(sum / dataArray.length)
+      const uid = key === '__self__' ? state.myId : key
+      const isSpeaking = rms > SPEAKING_THRESHOLD && (key === '__self__' ? !state.micMuted : true)
+      const was = state.speaking.has(uid)
+      if (isSpeaking && !was) { state.speaking.add(uid); changed = true }
+      else if (!isSpeaking && was) { state.speaking.delete(uid); changed = true }
+    }
+    if (changed) updateSpeakingIndicators()
+  }, 200)
+}
+
+function stopSpeakingLoop() {
+  clearInterval(speakingLoopTimer)
+  speakingLoopTimer = null
+}
+
+function updateSpeakingIndicators() {
+  document.querySelectorAll('.participant-item').forEach(li => {
+    const avatar = li.querySelector('.participant-avatar')
+    avatar?.classList.toggle('speaking', state.speaking.has(li.dataset.uid))
+  })
+}
+
+// ── Dispositivos de áudio (Configurações → Áudio) ──
+async function populateAudioDeviceSelects() {
+  try {
+    const devices = await navigator.mediaDevices.enumerateDevices()
+    const mics = devices.filter(d => d.kind === 'audioinput')
+    const outputs = devices.filter(d => d.kind === 'audiooutput')
+
+    const micSelect = $('select-mic')
+    micSelect.innerHTML = '<option value="">Padrão do sistema</option>'
+      + mics.map(d => `<option value="${d.deviceId}">${d.label || 'Microfone'}</option>`).join('')
+    micSelect.value = state.micDeviceId || ''
+
+    // setSinkId (escolher saída) só existe em navegadores baseados em
+    // Chromium — esconde o seletor quando não suportado em vez de mostrar
+    // uma opção que não faz nada.
+    const outRow = $('select-speaker').closest('.settings-row')
+    if (typeof HTMLMediaElement.prototype.setSinkId === 'function' && outputs.length) {
+      outRow.classList.remove('hidden')
+      const outSelect = $('select-speaker')
+      outSelect.innerHTML = '<option value="">Padrão do sistema</option>'
+        + outputs.map(d => `<option value="${d.deviceId}">${d.label || 'Saída de áudio'}</option>`).join('')
+      outSelect.value = state.speakerDeviceId || ''
+    } else {
+      outRow.classList.add('hidden')
+    }
+  } catch (err) {
+    appLog('WARN', `Falha ao listar dispositivos de áudio: ${err.message}`)
+  }
+}
+
+// Atualiza a lista quando um dispositivo é plugado/removido enquanto o
+// modal está aberto.
+navigator.mediaDevices?.addEventListener?.('devicechange', () => {
+  if (!$('modal-settings').classList.contains('hidden')) populateAudioDeviceSelects()
+})
+
+$('select-mic').addEventListener('change', async () => {
+  await switchMicDevice($('select-mic').value)
+})
+
+async function switchMicDevice(deviceId) {
+  state.micDeviceId = deviceId
+  sessionStorage.setItem(MIC_DEVICE_KEY, deviceId)
+  if (!state.localMicStream) return // será usado na próxima vez que ensureLocalMicStream rodar
+
+  try {
+    const constraints = { audio: deviceId ? { deviceId: { exact: deviceId } } : true, video: false }
+    const newStream = await navigator.mediaDevices.getUserMedia(constraints)
+    const newTrack = newStream.getAudioTracks()[0]
+    newTrack.enabled = !state.micMuted
+
+    // Troca o track em todas as conexões de voz já abertas, sem precisar
+    // renegociar (replaceTrack é instantâneo do ponto de vista do SDP).
+    for (const pc of Object.values(state.voicePeers)) {
+      const sender = pc.getSenders().find(s => s.track && s.track.kind === 'audio')
+      if (sender) await sender.replaceTrack(newTrack)
+    }
+
+    state.localMicStream.getTracks().forEach(t => t.stop())
+    state.localMicStream = newStream
+    setupLocalVoiceAnalyser(newStream)
+    appLog('INFO', 'Microfone alterado')
+  } catch (err) {
+    appLog('ERROR', `Falha ao trocar de microfone: ${err.message}`)
+    toast('Não foi possível usar esse microfone.')
+  }
+}
+
+$('select-speaker').addEventListener('change', async () => {
+  state.speakerDeviceId = $('select-speaker').value
+  sessionStorage.setItem(SPEAKER_DEVICE_KEY, state.speakerDeviceId)
+  // Aplica no áudio de cada participante já conectado e no áudio de teste.
+  await Promise.all(Object.values(state.voiceAudioEls).map(applyOutputDevice))
+  await applyOutputDevice($('mic-test-audio'))
+})
+
+async function applyOutputDevice(audioEl) {
+  if (!state.speakerDeviceId || typeof audioEl.setSinkId !== 'function') return
+  try {
+    await audioEl.setSinkId(state.speakerDeviceId)
+  } catch (err) {
+    console.warn('[SINK] Falha ao aplicar dispositivo de saída:', err)
+  }
+}
+
+// ── Volume geral (Configurações → Áudio) ──
+const masterVolumeSlider = $('master-volume-slider')
+masterVolumeSlider.value = state.masterVolume
+masterVolumeSlider.addEventListener('input', () => {
+  state.masterVolume = Number(masterVolumeSlider.value)
+  sessionStorage.setItem(MASTER_VOLUME_KEY, String(state.masterVolume))
+  applyAllVoiceVolumes()
+})
+
+// ── Testar microfone e saída (loopback local, com medidor de nível) ──
+let micTestStream = null
+let micTestAnalyser = null
+let micTestRAF = null
+
+$('btn-test-mic').onclick = () => {
+  if (micTestStream) stopMicTest()
+  else startMicTest()
+}
+
+async function startMicTest() {
+  try {
+    const constraints = { audio: state.micDeviceId ? { deviceId: { exact: state.micDeviceId } } : true }
+    micTestStream = await navigator.mediaDevices.getUserMedia(constraints)
+
+    const audioEl = $('mic-test-audio')
+    audioEl.srcObject = micTestStream
+    audioEl.muted = false
+    audioEl.volume = state.masterVolume / 100
+    await applyOutputDevice(audioEl)
+    await audioEl.play().catch(() => {})
+
+    const ctx = getVoiceAudioContext()
+    const source = ctx.createMediaStreamSource(micTestStream)
+    micTestAnalyser = ctx.createAnalyser()
+    micTestAnalyser.fftSize = 256
+    source.connect(micTestAnalyser)
+
+    $('btn-test-mic').textContent = 'Parar teste'
+    $('mic-test-meter').classList.remove('hidden')
+    runMicTestMeter()
+  } catch (err) {
+    appLog('WARN', `Falha ao testar microfone: ${err.message}`)
+    toast('Não foi possível acessar o microfone para o teste.')
+  }
+}
+
+function runMicTestMeter() {
+  if (!micTestAnalyser) return
+  const data = new Uint8Array(micTestAnalyser.fftSize)
+  micTestAnalyser.getByteTimeDomainData(data)
+  let sum = 0
+  for (let i = 0; i < data.length; i++) {
+    const v = (data[i] - 128) / 128
+    sum += v * v
+  }
+  const rms = Math.sqrt(sum / data.length)
+  $('mic-test-meter-fill').style.width = `${Math.min(100, Math.round(rms * 220))}%`
+  micTestRAF = requestAnimationFrame(runMicTestMeter)
+}
+
+function stopMicTest() {
+  cancelAnimationFrame(micTestRAF)
+  micTestRAF = null
+  micTestAnalyser = null
+  micTestStream?.getTracks().forEach(t => t.stop())
+  micTestStream = null
+
+  const audioEl = $('mic-test-audio')
+  audioEl.pause()
+  audioEl.srcObject = null
+
+  $('btn-test-mic').textContent = 'Testar microfone e saída'
+  $('mic-test-meter').classList.add('hidden')
+  $('mic-test-meter-fill').style.width = '0%'
+}
+
 function removeUser(uid) {
   delete state.users[uid]
   state.watching.delete(uid)
@@ -1000,6 +1582,10 @@ function removeUser(uid) {
   delete state.screenSnapshots[uid]
   closeWatchPeer(uid)
   closeSharePeer(uid)
+  closeVoicePeer(uid)
+  delete state.participantVolumes[uid]
+  delete state.participantLastVolume[uid]
+  if (volumePopoverUid === uid) closeParticipantVolumePopover()
   removeStreamCard(uid)
   renderParticipants()
 }
@@ -1008,10 +1594,19 @@ function removeUser(uid) {
 // CONFIGURAÇÕES — modal com opções por seção (por enquanto só "Live").
 // Botão fica meio a meio com o de compartilhar na sidebar.
 // ──────────────────────────────────────────────
-$('btn-settings').onclick = () => $('modal-settings').classList.remove('hidden')
-$('btn-close-settings').onclick = () => $('modal-settings').classList.add('hidden')
+$('btn-settings').onclick = () => {
+  $('modal-settings').classList.remove('hidden')
+  populateAudioDeviceSelects()
+}
+$('btn-close-settings').onclick = () => {
+  $('modal-settings').classList.add('hidden')
+  stopMicTest() // não deixa o loopback do teste de mic tocando escondido
+}
 $('modal-settings').onclick = (e) => {
-  if (e.target === $('modal-settings')) $('modal-settings').classList.add('hidden')
+  if (e.target === $('modal-settings')) {
+    $('modal-settings').classList.add('hidden')
+    stopMicTest()
+  }
 }
 
 // Autovisualização — opcional, canto inferior direito, sempre mudo.
@@ -1835,6 +2430,18 @@ $('btn-leave').onclick = () => {
   Object.values(state.statsIntervals).forEach(id => clearInterval(id))
   state.statsIntervals = {}
   if (document.pictureInPictureElement) document.exitPictureInPicture().catch(() => {})
+
+  // Chat de voz — libera o microfone e fecha tudo (uma sala nova pode
+  // pedir outro dispositivo, então não vale a pena manter capturado).
+  Object.keys(state.voicePeers).forEach(uid => closeVoicePeer(uid))
+  state.localMicStream?.getTracks().forEach(t => t.stop())
+  state.localMicStream = null
+  stopSpeakingLoop()
+  Object.keys(voiceAnalysers).forEach(key => delete voiceAnalysers[key])
+  state.speaking.clear()
+  state.participantVolumes = {}
+  state.participantLastVolume = {}
+  closeParticipantVolumePopover()
   $('streams-grid').innerHTML = ''
   $('stage-empty').classList.remove('hidden')
   $('streams-grid').classList.add('hidden')

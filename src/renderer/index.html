@@ -97,6 +97,9 @@
 
       <div class="sidebar-footer">
         <div class="share-row">
+          <button class="btn-mic" id="btn-toggle-mic" title="Mutar microfone">
+            <span class="mic-icon">🎤</span>
+          </button>
           <button class="btn-share" id="btn-toggle-share" title="Compartilhar tela">
             <span class="share-icon">🖥️</span>
           </button>
@@ -172,6 +175,56 @@
 
       <div class="settings-body">
         <div class="settings-section">
+          <h3 class="settings-section-title">Áudio</h3>
+
+          <div class="settings-row">
+            <div class="settings-row-text">
+              <span class="settings-row-label">Microfone</span>
+              <span class="settings-row-hint">Dispositivo de entrada usado no chat de voz.</span>
+            </div>
+            <select id="select-mic" class="quality-select-inline"></select>
+          </div>
+
+          <div class="settings-row">
+            <div class="settings-row-text">
+              <span class="settings-row-label">Saída de áudio</span>
+              <span class="settings-row-hint">Dispositivo usado para ouvir o chat de voz.</span>
+            </div>
+            <select id="select-speaker" class="quality-select-inline"></select>
+          </div>
+
+          <div class="settings-row">
+            <div class="settings-row-text">
+              <span class="settings-row-label">Volume geral</span>
+              <span class="settings-row-hint">Afeta o volume de todos os participantes no chat de voz.</span>
+            </div>
+            <input type="range" id="master-volume-slider" class="master-volume-slider" min="0" max="100" value="100" />
+          </div>
+
+          <label class="settings-row">
+            <div class="settings-row-text">
+              <span class="settings-row-label">Mutar meu microfone</span>
+              <span class="settings-row-hint">Ninguém ouvirá sua voz enquanto estiver ativado.</span>
+            </div>
+            <span class="toggle-switch">
+              <input type="checkbox" id="chk-mic-muted" />
+              <span class="toggle-slider"></span>
+            </span>
+          </label>
+
+          <div class="settings-row settings-row-column">
+            <div class="settings-row-text">
+              <span class="settings-row-label">Testar microfone e saída</span>
+              <span class="settings-row-hint">Toca o microfone selecionado na saída escolhida — use fones de ouvido para evitar eco.</span>
+            </div>
+            <button type="button" class="btn-secondary" id="btn-test-mic">Testar microfone e saída</button>
+            <div id="mic-test-meter" class="mic-test-meter hidden">
+              <div id="mic-test-meter-fill" class="mic-test-meter-fill"></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="settings-section">
           <h3 class="settings-section-title">Live</h3>
 
           <label class="settings-row">
@@ -234,6 +287,26 @@
        para de decodificar frames no Chromium. -->
   <video id="snapshot-source-video" autoplay muted playsinline
     style="position: fixed; width: 2px; height: 2px; opacity: 0; pointer-events: none;"></video>
+
+  <!-- CHAT DE VOZ — um <audio> por participante é criado aqui em runtime
+       (ver createVoicePeer/ontrack em app.js) só pra tocar o microfone de
+       cada um; nunca aparece na tela. -->
+  <div id="voice-audio-container" class="hidden"></div>
+
+  <!-- Áudio usado só no teste de microfone/saída (Configurações → Áudio) -->
+  <audio id="mic-test-audio" class="hidden"></audio>
+
+  <!-- POPOVER DE VOLUME POR PARTICIPANTE — ao clicar num participante na
+       sidebar (ver openParticipantVolumePopover), abre este painel com o
+       mesmo slider usado nos cards de stream (.vol-icon/.vol-slider),
+       fixo na tela (não preso à lista, que tem scroll próprio). -->
+  <div id="participant-volume-popover" class="participant-volume-popover hidden">
+    <div class="pv-header" id="pv-username">Participante</div>
+    <div class="pv-row">
+      <button type="button" class="vol-icon" id="pv-mute-btn" title="Mutar/Desmutar">🔊</button>
+      <input type="range" class="vol-slider" id="pv-slider" min="0" max="100" value="100" />
+    </div>
+  </div>
 
   <script src="app.js"></script>
 </body>
