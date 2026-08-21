@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ShareSync</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+  <!-- TITLEBAR -->
+  <div class="titlebar">
+    <div class="titlebar-drag">
+      <span class="app-logo">⬡</span>
+      <span class="app-name">ShareSync</span>
+    </div>
+    <div class="titlebar-controls">
+      <button class="tb-btn" id="btn-min" title="Minimizar">─</button>
+      <button class="tb-btn" id="btn-max" title="Maximizar">□</button>
+      <button class="tb-btn tb-close" id="btn-close" title="Fechar">✕</button>
+    </div>
+  </div>
+
+  <!-- ══════════ TELA: LOGIN ══════════ -->
+  <div id="screen-login" class="screen active">
+    <div class="login-wrap">
+      <div class="login-brand">
+        <div class="brand-icon">⬡</div>
+        <h1>ShareSync</h1>
+        <p class="brand-sub">Compartilhe sua tela com quem você quiser</p>
+      </div>
+
+      <div class="login-card">
+        <div class="field-group">
+          <label for="input-name">Seu nome</label>
+          <input id="input-name" type="text" placeholder="Como quer ser chamado?" maxlength="32" />
+        </div>
+
+        <div class="field-group">
+          <label for="input-server">Servidor</label>
+          <input id="input-server" type="text" value="ws://177.85.121.34:8000" placeholder="ws://..." />
+        </div>
+
+        <div class="login-actions">
+          <button class="btn-primary" id="btn-create-room">
+            <span class="btn-icon">+</span> Criar sala
+          </button>
+          <div class="divider"><span>ou entre com o código</span></div>
+          <div class="join-row">
+            <input id="input-room-id" type="text" placeholder="Código da sala" maxlength="8" />
+            <button class="btn-secondary" id="btn-join-room">Entrar</button>
+          </div>
+        </div>
+
+        <p id="login-error" class="error-msg hidden"></p>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══════════ TELA: SALA ══════════ -->
+  <div id="screen-room" class="screen">
+    <aside class="sidebar">
+      <div class="sidebar-header">
+        <span class="room-label">Sala</span>
+        <div class="room-id-box">
+          <span id="display-room-id">--------</span>
+          <button id="btn-copy-id" class="icon-btn" title="Copiar código">⎘</button>
+        </div>
+        <div class="ping-box" id="ping-box" data-level="0" title="Latência com o servidor">
+          <span class="ping-bars">
+            <span class="bar b1"></span><span class="bar b2"></span><span class="bar b3"></span><span class="bar b4"></span>
+          </span>
+          <span class="ping-ms" id="ping-ms">-- ms</span>
+        </div>
+      </div>
+
+      <div class="participants-label">Participantes</div>
+      <ul id="participants-list" class="participants-list"></ul>
+
+      <div class="sidebar-footer">
+        <div class="share-row">
+          <button class="btn-share" id="btn-toggle-share" title="Compartilhar tela">
+            <span class="share-icon">🖥️</span>
+          </button>
+          <button class="btn-settings" id="btn-settings" title="Configurações">
+            <span class="settings-icon">⚙</span>
+          </button>
+        </div>
+        <button class="btn-leave" id="btn-leave">Sair da sala</button>
+      </div>
+    </aside>
+
+    <main class="stage">
+      <!-- Estado vazio -->
+      <div id="stage-empty" class="stage-empty">
+        <div class="empty-icon">⬡</div>
+        <p>Nenhuma tela sendo compartilhada</p>
+        <span>Aguarde alguém compartilhar ou inicie você mesmo</span>
+      </div>
+
+      <!-- Grid de streams -->
+      <div id="streams-grid" class="streams-grid hidden"></div>
+    </main>
+  </div>
+
+  <!-- MODAL: escolher fonte de captura -->
+  <div id="modal-source" class="modal-backdrop hidden">
+    <div class="modal">
+      <div class="modal-header">
+        <h2>Escolher o que compartilhar</h2>
+        <button class="icon-btn" id="btn-close-modal">✕</button>
+      </div>
+      <div id="source-grid" class="source-grid"></div>
+
+      <div class="modal-quality">
+        <div class="quality-group">
+          <span class="quality-label">Resolução</span>
+          <div class="quality-options" id="quality-resolution">
+            <button type="button" class="quality-opt" data-value="720">720p</button>
+            <button type="button" class="quality-opt active" data-value="1080">1080p</button>
+          </div>
+        </div>
+        <div class="quality-group">
+          <span class="quality-label">Taxa de quadros</span>
+          <div class="quality-options" id="quality-fps">
+            <button type="button" class="quality-opt active" data-value="30">30 FPS</button>
+            <button type="button" class="quality-opt" data-value="60">60 FPS</button>
+          </div>
+        </div>
+        <div class="quality-group">
+          <span class="quality-label">Áudio</span>
+          <div class="quality-options" id="quality-audio">
+            <button type="button" class="quality-opt active" data-value="on">Com som</button>
+            <button type="button" class="quality-opt" data-value="off">Sem som</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="modal-footer">
+        <button class="btn-primary" id="btn-start-transmit" disabled>
+          <span class="btn-icon">▶</span> Transmitir
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL: configurações -->
+  <div id="modal-settings" class="modal-backdrop hidden">
+    <div class="modal modal-settings">
+      <div class="modal-header">
+        <h2>Configurações</h2>
+        <button class="icon-btn" id="btn-close-settings">✕</button>
+      </div>
+
+      <div class="settings-body">
+        <div class="settings-section">
+          <h3 class="settings-section-title">Live</h3>
+
+          <label class="settings-row">
+            <div class="settings-row-text">
+              <span class="settings-row-label">Mostrar minha tela</span>
+              <span class="settings-row-hint">Prévia muda no canto inferior direito enquanto você compartilha.</span>
+            </div>
+            <span class="toggle-switch">
+              <input type="checkbox" id="chk-self-preview" />
+              <span class="toggle-slider"></span>
+            </span>
+          </label>
+
+          <div class="settings-row">
+            <div class="settings-row-text">
+              <span class="settings-row-label">Qualidade padrão ao assistir</span>
+              <span class="settings-row-hint">Aplicada ao começar a assistir alguém — dá pra mudar na hora, por live, no seletor do card.</span>
+            </div>
+            <select id="default-watch-quality" class="quality-select-inline">
+              <option value="auto">Automática</option>
+              <option value="1080">1080p</option>
+              <option value="720">720p</option>
+              <option value="480">480p</option>
+              <option value="360">360p</option>
+            </select>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- TOAST -->
+  <div id="toast" class="toast hidden"></div>
+
+  <!-- TOAST DE CIMA — só pra "alguém compartilhou a tela", borda verde -->
+  <div id="toast-top" class="toast toast-top hidden"></div>
+
+  <!-- AUTOVISUALIZAÇÃO — sua própria tela, opcional (ver Configurações →
+       Live), canto inferior direito. Nunca transmite som (só uma prévia
+       local, sempre mudo) e não é enviada a ninguém — é o mesmo
+       state.localStream que já vai pros outros participantes. -->
+  <div id="self-preview" class="self-preview hidden">
+    <video id="self-preview-video" autoplay muted playsinline></video>
+  </div>
+
+  <!-- VERSÃO — canto inferior esquerdo, sempre visível em qualquer tela.
+       Também funciona como botão de "verificar atualização" manual. -->
+  <button id="app-version" class="app-version" title="Verificar atualização"></button>
+
+  <!-- ATUALIZAÇÃO — canto inferior esquerdo (acima da versão), só aparece quando há update -->
+  <button id="btn-update" class="btn-update hidden" title="Baixar e instalar atualização">
+    <span class="update-icon">⬇</span>
+    <span id="update-text">Atualização disponível</span>
+  </button>
+
+  <script src="app.js"></script>
+</body>
+</html>
