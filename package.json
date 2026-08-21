@@ -26,7 +26,7 @@
     "publish": {
       "provider": "github",
       "owner": "Gabrie2121",
-      "repo": "screenSharer"
+      "repo": "screenSharerClient"
     }
   },
   "devDependencies": {
