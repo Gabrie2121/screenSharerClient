@@ -11,7 +11,8 @@
     "start": "electron .",
     "build": "electron-builder build --win",
     "release": "electron-builder build --win --publish always",
-    "release:linux": "electron-builder build --linux rpm --publish always"
+    "release:linux": "electron-builder build --linux rpm --publish always",
+    "version:dev": "npm version prerelease --preid=dev --no-git-tag-version"
   },
   "build": {
     "appId": "com.sharesync.app",

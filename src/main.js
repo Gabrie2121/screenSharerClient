@@ -42,6 +42,19 @@ autoUpdater.logger = {
   error: (msg) => log('ERROR', `[updater] ${msg}`),
 }
 
+// Canal de atualização — normal (latest.yml) por padrão. Se a versão desse
+// build for um prerelease semver (ex.: "0.2.0-dev.3"), essa instância entra
+// no canal "dev" (dev.yml): só recebe futuras builds também "-dev", nunca
+// aparece pra quem instalou uma versão estável normal, e vice-versa — os
+// dois canais não se enxergam. É assim que dá pra ter builds de teste sem
+// afetar quem já está usando o app (ver context.MD).
+const versionChannel = app.getVersion().split('-')[1]?.split('.')[0]
+if (versionChannel) {
+  autoUpdater.channel = versionChannel
+  autoUpdater.allowPrerelease = true
+  log('INFO', `Canal de atualização: "${versionChannel}" (build ${app.getVersion()})`)
+}
+
 autoUpdater.on('update-available', (info) => {
   pendingManualCheck = false
   log('INFO', `Atualização disponível: v${info.version}`)
