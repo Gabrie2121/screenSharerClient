@@ -1,3 +1,5 @@
+import { RnnoiseWorkletNode, loadRnnoise } from '../../node_modules/@sapphi-red/web-noise-suppressor/dist/index.js'
+
 /* ═══════════════════════════════════════════════════════════════
    ShareSync — Renderer
    Responsabilidades:
@@ -19,6 +21,8 @@ const MIC_MUTED_KEY = 'sharesync:mic-muted'
 const MIC_DEVICE_KEY = 'sharesync:mic-device'
 const SPEAKER_DEVICE_KEY = 'sharesync:speaker-device'
 const MASTER_VOLUME_KEY = 'sharesync:master-volume'
+const NOISE_SUPPRESSION_KEY = 'sharesync:noise-suppression'
+const NOISE_INTENSITY_KEY = 'sharesync:noise-intensity'
 
 const state = {
   myId:      null,
@@ -108,10 +112,13 @@ const state = {
   // Minha captura de microfone — uma só, compartilhada com todas as
   // conexões de voz (o mesmo MediaStreamTrack é adicionado em cada uma).
   localMicStream: null,
+  localMicInputStream: null,
   micMuted: sessionStorage.getItem(MIC_MUTED_KEY) === 'true',
   micDeviceId: sessionStorage.getItem(MIC_DEVICE_KEY) || '',
   speakerDeviceId: sessionStorage.getItem(SPEAKER_DEVICE_KEY) || '',
   masterVolume: Number(sessionStorage.getItem(MASTER_VOLUME_KEY) ?? 100),
+  noiseSuppression: sessionStorage.getItem(NOISE_SUPPRESSION_KEY) !== 'false',
+  noiseIntensity: Number(sessionStorage.getItem(NOISE_INTENSITY_KEY) ?? 85),
   // Volume individual que EU escolhi pra ouvir cada participante (local,
   // não afeta o que os outros ouvem) — 0-100, 100 é o padrão.
   participantVolumes: {},
@@ -122,6 +129,81 @@ const state = {
   // Preenchido por detecção local de volume (ver startSpeakingLoop),
   // nenhuma mensagem nova de WebSocket é necessária pra isso.
   speaking: new Set(),
+}
+
+let noiseContext = null
+let noiseSource = null
+let noiseNode = null
+let noiseDestination = null
+let noiseDryGain = null
+let noiseWetGain = null
+let noiseSetupPromise = null
+
+async function createNoiseSuppressedStream(inputStream) {
+  if (!state.noiseSuppression || !noiseContext?.audioWorklet) return inputStream
+
+  try {
+    noiseSource = noiseContext.createMediaStreamSource(inputStream)
+    noiseNode = new RnnoiseWorkletNode(noiseContext, {
+      maxChannels: 1,
+      wasmBinary: await loadRnnoise({
+        url: new URL('../../node_modules/@sapphi-red/web-noise-suppressor/dist/rnnoise.wasm', import.meta.url).href,
+        simdUrl: new URL('../../node_modules/@sapphi-red/web-noise-suppressor/dist/rnnoise_simd.wasm', import.meta.url).href,
+      }),
+    })
+    noiseDryGain = noiseContext.createGain()
+    noiseWetGain = noiseContext.createGain()
+    noiseDestination = noiseContext.createMediaStreamDestination()
+    noiseSource.connect(noiseDryGain)
+    noiseDryGain.connect(noiseDestination)
+    noiseSource.connect(noiseNode)
+    noiseNode.connect(noiseWetGain)
+    noiseWetGain.connect(noiseDestination)
+    updateNoiseIntensity()
+    appLog('INFO', 'RNNoise ativado para o microfone')
+    return noiseDestination.stream
+  } catch (err) {
+    appLog('WARN', `RNNoise indisponível, usando áudio original: ${err.message}`)
+    destroyNoiseSuppression()
+    return inputStream
+  }
+}
+
+async function prepareNoiseSuppression() {
+  if (!state.noiseSuppression) return
+  if (!noiseSetupPromise) {
+    noiseSetupPromise = (async () => {
+      noiseContext = new AudioContext({ sampleRate: 48000 })
+      await noiseContext.audioWorklet.addModule(new URL('../../node_modules/@sapphi-red/web-noise-suppressor/dist/rnnoise/workletProcessor.js', import.meta.url).href)
+    })().catch((err) => {
+      noiseSetupPromise = null
+      noiseContext?.close()
+      noiseContext = null
+      throw err
+    })
+  }
+  await noiseSetupPromise
+}
+
+function destroyNoiseSuppression() {
+  noiseSource?.disconnect()
+  noiseNode?.disconnect()
+  noiseNode?.destroy()
+  noiseContext?.close()
+  noiseSource = null
+  noiseNode = null
+  noiseDestination = null
+  noiseDryGain = null
+  noiseWetGain = null
+  noiseContext = null
+  noiseSetupPromise = null
+}
+
+function updateNoiseIntensity() {
+  if (!noiseContext || !noiseDryGain || !noiseWetGain) return
+  const intensity = Math.max(0, Math.min(100, state.noiseIntensity)) / 100
+  noiseDryGain.gain.setTargetAtTime(1.2 * (1 - intensity), noiseContext.currentTime, 0.015)
+  noiseWetGain.gain.setTargetAtTime(1.2 + intensity * 0.35, noiseContext.currentTime, 0.015)
 }
 
 // ──────────────────────────────────────────────
@@ -711,8 +793,8 @@ function makeParticipantItem(uid, name, sharing, isMe) {
 
   const initial = name[0]?.toUpperCase() || '?'
   const statusText = sharing
-    ? (isMe ? '● Compartilhando' : '● Compartilhando')
-    : (isMe ? 'Você' : 'Participante')
+    ? (isMe ? '● Live' : '● Live')
+    : (isMe ? 'Você' : '● Online')
 
   const watching   = state.watching.has(uid)
   const connecting = state.connecting.has(uid)
@@ -1087,18 +1169,23 @@ async function initVoiceChat() {
 // MediaStreamTrack é adicionada em todas as conexões de voz.
 async function ensureLocalMicStream() {
   if (state.localMicStream) return state.localMicStream
+  let inputStream = null
   try {
     const constraints = {
       audio: state.micDeviceId ? { deviceId: { exact: state.micDeviceId } } : true,
       video: false,
     }
-    const stream = await navigator.mediaDevices.getUserMedia(constraints)
+    inputStream = await navigator.mediaDevices.getUserMedia(constraints)
+    await prepareNoiseSuppression()
+    const stream = await createNoiseSuppressedStream(inputStream)
     stream.getAudioTracks().forEach(t => { t.enabled = !state.micMuted })
+    state.localMicInputStream = inputStream
     state.localMicStream = stream
-    setupLocalVoiceAnalyser(stream)
+    setupLocalVoiceAnalyser(inputStream)
     appLog('INFO', 'Microfone capturado — chat de voz ativo')
     return stream
   } catch (err) {
+    inputStream?.getTracks().forEach(t => t.stop())
     appLog('WARN', `Não foi possível acessar o microfone: ${err.message}`)
     toast('Não foi possível acessar o microfone. O chat de voz ficará desativado.')
     return null
@@ -1459,9 +1546,15 @@ async function switchMicDevice(deviceId) {
   sessionStorage.setItem(MIC_DEVICE_KEY, deviceId)
   if (!state.localMicStream) return // será usado na próxima vez que ensureLocalMicStream rodar
 
+  let newInputStream = null
   try {
     const constraints = { audio: deviceId ? { deviceId: { exact: deviceId } } : true, video: false }
-    const newStream = await navigator.mediaDevices.getUserMedia(constraints)
+    newInputStream = await navigator.mediaDevices.getUserMedia(constraints)
+    const previousStream = state.localMicStream
+    const previousInputStream = state.localMicInputStream
+    destroyNoiseSuppression()
+    await prepareNoiseSuppression()
+    const newStream = await createNoiseSuppressedStream(newInputStream)
     const newTrack = newStream.getAudioTracks()[0]
     newTrack.enabled = !state.micMuted
 
@@ -1472,11 +1565,14 @@ async function switchMicDevice(deviceId) {
       if (sender) await sender.replaceTrack(newTrack)
     }
 
-    state.localMicStream.getTracks().forEach(t => t.stop())
+    previousInputStream?.getTracks().forEach(t => t.stop())
+    previousStream?.getTracks().forEach(t => t.stop())
+    state.localMicInputStream = newInputStream
     state.localMicStream = newStream
-    setupLocalVoiceAnalyser(newStream)
+    setupLocalVoiceAnalyser(newInputStream)
     appLog('INFO', 'Microfone alterado')
   } catch (err) {
+    newInputStream?.getTracks().forEach(t => t.stop())
     appLog('ERROR', `Falha ao trocar de microfone: ${err.message}`)
     toast('Não foi possível usar esse microfone.')
   }
@@ -1506,6 +1602,25 @@ masterVolumeSlider.addEventListener('input', () => {
   state.masterVolume = Number(masterVolumeSlider.value)
   sessionStorage.setItem(MASTER_VOLUME_KEY, String(state.masterVolume))
   applyAllVoiceVolumes()
+})
+
+const chkNoiseSuppression = $('chk-noise-suppression')
+chkNoiseSuppression.checked = state.noiseSuppression
+chkNoiseSuppression.onchange = async () => {
+  state.noiseSuppression = chkNoiseSuppression.checked
+  sessionStorage.setItem(NOISE_SUPPRESSION_KEY, String(state.noiseSuppression))
+  if (state.localMicStream) await switchMicDevice(state.micDeviceId)
+}
+
+const noiseSuppressionSlider = $('noise-suppression-slider')
+const noiseSuppressionValue = $('noise-suppression-value')
+noiseSuppressionSlider.value = state.noiseIntensity
+noiseSuppressionValue.value = `${state.noiseIntensity}%`
+noiseSuppressionSlider.addEventListener('input', () => {
+  state.noiseIntensity = Number(noiseSuppressionSlider.value)
+  noiseSuppressionValue.value = `${state.noiseIntensity}%`
+  sessionStorage.setItem(NOISE_INTENSITY_KEY, String(state.noiseIntensity))
+  updateNoiseIntensity()
 })
 
 // ── Testar microfone e saída (loopback local, com medidor de nível) ──
@@ -2450,8 +2565,11 @@ $('btn-leave').onclick = () => {
   // Chat de voz — libera o microfone e fecha tudo (uma sala nova pode
   // pedir outro dispositivo, então não vale a pena manter capturado).
   Object.keys(state.voicePeers).forEach(uid => closeVoicePeer(uid))
+  state.localMicInputStream?.getTracks().forEach(t => t.stop())
   state.localMicStream?.getTracks().forEach(t => t.stop())
+  destroyNoiseSuppression()
   state.localMicStream = null
+  state.localMicInputStream = null
   stopSpeakingLoop()
   Object.keys(voiceAnalysers).forEach(key => delete voiceAnalysers[key])
   state.speaking.clear()

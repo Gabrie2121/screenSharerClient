@@ -1,0 +1,3 @@
+- Supressão de ruido deixa o som muito baixo, cria um slider para configurar a intensidade da suppressão
+
+- se eu desativar a suppresão na configuração ele desativa, e quando eu ativo denovo ele desliga o microfone e não funciona mais

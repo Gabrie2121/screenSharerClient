@@ -1168,6 +1168,15 @@ input[type="text"]::placeholder { color: var(--text3); }
 .settings-row-column { flex-direction: column; align-items: stretch; gap: 10px; }
 
 .master-volume-slider { width: 130px; accent-color: var(--accent); cursor: pointer; }
+.noise-intensity-control { display: flex; align-items: center; gap: 12px; width: 100%; }
+.noise-intensity-control input { flex: 1; accent-color: var(--accent); cursor: pointer; }
+.noise-intensity-control output {
+  min-width: 42px;
+  color: var(--accent);
+  font-family: var(--mono);
+  font-size: 12px;
+  text-align: right;
+}
 
 @media (max-width: 640px) {
   .modal-settings { width: calc(100vw - 24px); max-height: calc(100vh - 52px); }

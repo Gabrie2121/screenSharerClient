@@ -213,6 +213,28 @@
 
           <label class="settings-row">
             <div class="settings-row-text">
+              <span class="settings-row-label">Supressão de ruído</span>
+              <span class="settings-row-hint">Reduz ruídos constantes do microfone usando RNNoise.</span>
+            </div>
+            <span class="toggle-switch">
+              <input type="checkbox" id="chk-noise-suppression" checked />
+              <span class="toggle-slider"></span>
+            </span>
+          </label>
+
+          <div class="settings-row settings-row-column noise-intensity-row">
+            <div class="settings-row-text">
+              <span class="settings-row-label">Intensidade da supressão</span>
+              <span class="settings-row-hint">Equilibra a voz original e o áudio filtrado. Valores menores preservam mais volume e naturalidade.</span>
+            </div>
+            <div class="noise-intensity-control">
+              <input type="range" id="noise-suppression-slider" min="0" max="100" value="85" />
+              <output id="noise-suppression-value" for="noise-suppression-slider">85%</output>
+            </div>
+          </div>
+
+          <label class="settings-row">
+            <div class="settings-row-text">
               <span class="settings-row-label">Mutar meu microfone</span>
               <span class="settings-row-hint">Ninguém ouvirá sua voz enquanto estiver ativado.</span>
             </div>
@@ -321,6 +343,6 @@
     </div>
   </div>
 
-  <script src="app.js"></script>
+  <script type="module" src="app.js"></script>
 </body>
 </html>
