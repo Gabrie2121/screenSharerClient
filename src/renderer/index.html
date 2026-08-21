@@ -218,15 +218,22 @@
   </div>
 
   <!-- PRÉVIA AO PASSAR O MOUSE — sobre um participante que está
-       compartilhando, na lista da sidebar. Só funciona pra quem você já
-       está assistindo (reaproveita o frame que já está sendo decodificado
-       ali, sem custo de rede — é a opção mais leve possível; iniciar uma
-       conexão WebRTC só pra um hover não seria "leve"). Pra quem você
-       ainda não assiste, mostra uma dica em vez de tentar simular algo. -->
+       compartilhando, na lista da sidebar. Se você já está assistindo,
+       usa o frame ao vivo (sem custo de rede extra). Senão, usa o último
+       snapshot que essa pessoa mandou pra sala (ver 'screen-snapshot' no
+       Fluxo WebSocket) — atualizado ao começar a compartilhar e a cada
+       3 minutos, bem mais leve que abrir uma conexão WebRTC só pro hover. -->
   <div id="participant-preview" class="participant-preview hidden">
     <canvas id="participant-preview-canvas" width="160" height="90"></canvas>
-    <div id="participant-preview-empty" class="participant-preview-empty hidden">Assista pra ver uma prévia</div>
+    <div id="participant-preview-empty" class="participant-preview-empty hidden">Prévia ainda não disponível</div>
   </div>
+
+  <!-- Vídeo escondido só pra capturar o snapshot periódico da própria tela
+       (ver captureAndSendSnapshot) — não é exibido em nenhum lugar; opacity
+       0 em vez de display:none porque um vídeo display:none geralmente
+       para de decodificar frames no Chromium. -->
+  <video id="snapshot-source-video" autoplay muted playsinline
+    style="position: fixed; width: 2px; height: 2px; opacity: 0; pointer-events: none;"></video>
 
   <script src="app.js"></script>
 </body>

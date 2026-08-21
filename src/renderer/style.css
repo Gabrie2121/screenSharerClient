@@ -759,7 +759,12 @@ input[type="text"]::placeholder { color: var(--text3); }
   transform: translateY(-4px);
   transition: opacity .15s, transform .15s;
 }
-.vol-control:hover .vol-popover {
+/* .open é controlado por JS (mouseenter/mouseleave com um pequeno atraso
+   pra sair) — só :hover puro não dava porque o popover é position:absolute
+   e geometricamente fica fora da caixa do ícone; mover o mouse até o
+   slider passava por um instante fora dos dois e fechava no meio do
+   caminho (ver vol-control em upsertStreamCard). */
+.vol-control.open .vol-popover {
   opacity: 1;
   pointer-events: auto;
   transform: translateY(0);

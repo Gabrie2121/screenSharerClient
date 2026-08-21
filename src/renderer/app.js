@@ -83,6 +83,13 @@ const state = {
   // recebidos em cada card (ver upsertStreamCard) — prova concreta de que
   // o seletor de qualidade está realmente mudando o que chega pela rede.
   statsIntervals: {},
+
+  // Últimos snapshots recebidos de cada compartilhamento — { userId: dataURL
+  // jpeg }. Usado na prévia ao passar o mouse na sidebar pra quem você
+  // ainda não está assistindo (ver showParticipantPreview). Quem compartilha
+  // manda um novo a cada 3min (ver captureAndSendSnapshot).
+  screenSnapshots: {},
+  snapshotInterval: null,
 }
 
 // ──────────────────────────────────────────────
@@ -581,12 +588,20 @@ async function handleMessage(msg) {
         stopWatchTimeout(msg.user_id)
         state.watching.delete(msg.user_id)
         state.connecting.delete(msg.user_id)
+        delete state.screenSnapshots[msg.user_id] // não mostra prévia de uma live que já acabou
         renderParticipants()
         removeStreamCard(msg.user_id)
         // Só fecha a conexão em que EU assistia essa pessoa — se ela
         // também estiver me assistindo, essa outra conexão continua de pé.
         closeWatchPeer(msg.user_id)
       }
+      break
+
+    // Miniatura periódica da tela de quem compartilha — guarda pra
+    // mostrar na prévia ao passar o mouse (sidebar), sem precisar
+    // assistir. Ver captureAndSendSnapshot.
+    case 'screen-snapshot':
+      if (msg.payload?.image) state.screenSnapshots[msg.user_id] = msg.payload.image
       break
 
     // ── WebRTC ──
@@ -693,22 +708,37 @@ function showParticipantPreview(uid, li) {
 
   const canvas = $('participant-preview-canvas')
   const emptyMsg = $('participant-preview-empty')
-  const video = document.querySelector(`.stream-card[data-stream="${uid}"] video`)
-
+  const ctx = canvas.getContext('2d')
   clearInterval(participantPreviewTimer)
-  if (!video || !state.remoteStreams[uid]) {
-    canvas.classList.add('hidden')
-    emptyMsg.classList.remove('hidden')
+
+  // Já assistindo — usa o frame ao vivo, mais fiel e atualiza rápido.
+  const video = document.querySelector(`.stream-card[data-stream="${uid}"] video`)
+  if (video && state.remoteStreams[uid]) {
+    canvas.classList.remove('hidden')
+    emptyMsg.classList.add('hidden')
+    const draw = () => {
+      try { ctx.drawImage(video, 0, 0, canvas.width, canvas.height) } catch { /* frame ainda não pronto */ }
+    }
+    draw()
+    participantPreviewTimer = setInterval(draw, 1500) // só uma prévia, não precisa ser fluida
     return
   }
-  canvas.classList.remove('hidden')
-  emptyMsg.classList.add('hidden')
-  const ctx = canvas.getContext('2d')
-  const draw = () => {
-    try { ctx.drawImage(video, 0, 0, canvas.width, canvas.height) } catch { /* frame ainda não pronto */ }
+
+  // Não assistindo — cai pro último snapshot que essa pessoa mandou pra
+  // sala (atualiza ao começar a compartilhar e a cada 3min, ver
+  // captureAndSendSnapshot). É uma imagem estática, sem intervalo.
+  const snapshot = state.screenSnapshots[uid]
+  if (snapshot) {
+    canvas.classList.remove('hidden')
+    emptyMsg.classList.add('hidden')
+    const img = new Image()
+    img.onload = () => { try { ctx.drawImage(img, 0, 0, canvas.width, canvas.height) } catch {} }
+    img.src = snapshot
+    return
   }
-  draw()
-  participantPreviewTimer = setInterval(draw, 1500) // só uma prévia, não precisa ser fluida
+
+  canvas.classList.add('hidden')
+  emptyMsg.classList.remove('hidden')
 }
 
 function hideParticipantPreview() {
@@ -967,6 +997,7 @@ function removeUser(uid) {
   delete state.users[uid]
   state.watching.delete(uid)
   state.connecting.delete(uid)
+  delete state.screenSnapshots[uid]
   closeWatchPeer(uid)
   closeSharePeer(uid)
   removeStreamCard(uid)
@@ -1024,6 +1055,56 @@ function updateSelfPreview() {
   if (video.srcObject !== state.localStream) {
     video.srcObject = state.localStream
     video.play().catch(() => {})
+  }
+}
+
+// ──────────────────────────────────────────────
+// SNAPSHOT PERIÓDICO — pra prévia de quem não está assistindo (sidebar)
+// Manda um JPEG pequeno pra sala ao começar a compartilhar e depois a
+// cada 3min. Usa um <video> escondido dedicado (#snapshot-source-video)
+// em vez do vídeo da autovisualização, porque a autovisualização só
+// existe quando a pessoa ativa aquela preferência opcional — o snapshot
+// precisa funcionar sempre, independente disso.
+// ──────────────────────────────────────────────
+const SNAPSHOT_INTERVAL_MS = 3 * 60 * 1000
+
+function startSnapshotLoop() {
+  stopSnapshotLoop()
+  const srcVideo = $('snapshot-source-video')
+  srcVideo.srcObject = state.localStream
+  srcVideo.play().catch(() => {})
+
+  // Espera ter pelo menos um frame decodificado antes do primeiro snapshot
+  const sendFirst = () => {
+    captureAndSendSnapshot()
+    srcVideo.removeEventListener('loadeddata', sendFirst)
+  }
+  srcVideo.addEventListener('loadeddata', sendFirst)
+
+  state.snapshotInterval = setInterval(captureAndSendSnapshot, SNAPSHOT_INTERVAL_MS)
+}
+
+function stopSnapshotLoop() {
+  clearInterval(state.snapshotInterval)
+  state.snapshotInterval = null
+  const srcVideo = $('snapshot-source-video')
+  srcVideo.srcObject = null
+}
+
+function captureAndSendSnapshot() {
+  if (!state.sharing || !state.localStream) return
+  const srcVideo = $('snapshot-source-video')
+  if (!srcVideo.videoWidth) return // ainda sem frame decodificado
+
+  try {
+    const canvas = document.createElement('canvas')
+    canvas.width = 160
+    canvas.height = 90
+    canvas.getContext('2d').drawImage(srcVideo, 0, 0, canvas.width, canvas.height)
+    const image = canvas.toDataURL('image/jpeg', 0.5)
+    sendWS({ type: 'screen-snapshot', payload: { image } })
+  } catch (err) {
+    console.warn('[SNAPSHOT] Falha ao gerar prévia da tela:', err)
   }
 }
 
@@ -1236,6 +1317,7 @@ async function captureSource(sourceId, quality) {
     // participantes a veem. Se a preferência estiver ativa, mostra a
     // prévia local mudinha no canto inferior direito (ver updateSelfPreview).
     updateSelfPreview()
+    startSnapshotLoop()
     renderParticipants()
     appLog('INFO', `Compartilhamento iniciado (áudio: ${stream.getAudioTracks().length > 0}, `
       + `qualidade: ${quality.resolution}p@${quality.fps}fps)`)
@@ -1352,8 +1434,30 @@ function upsertStreamCard(uid, stream) {
     const video = card.querySelector('video')
     const slider = card.querySelector('.vol-slider')
     const volIcon = card.querySelector('.vol-icon')
+    const volControl = card.querySelector('.vol-control')
+    const volPopover = card.querySelector('.vol-popover')
     const volTooltip = card.querySelector('.vol-tooltip')
     let lastVolume = 100 // pra restaurar ao clicar no ícone depois de mutar
+
+    // Abre/fecha o popover por JS (não só CSS :hover) — o popover é
+    // position:absolute, então geometricamente ele fica FORA da caixa do
+    // ícone; com só `:hover` puro, mover o mouse do ícone até o slider
+    // passava por um instante fora de qualquer um dos dois e o popover
+    // fechava no meio do caminho. Um pequeno atraso ao sair (e cancelado
+    // se o mouse entrar no outro elemento a tempo) resolve isso.
+    let volCloseTimer = null
+    const openVolPopover = () => {
+      clearTimeout(volCloseTimer)
+      volControl.classList.add('open')
+    }
+    const scheduleCloseVolPopover = () => {
+      clearTimeout(volCloseTimer)
+      volCloseTimer = setTimeout(() => volControl.classList.remove('open'), 250)
+    }
+    volControl.addEventListener('mouseenter', openVolPopover)
+    volControl.addEventListener('mouseleave', scheduleCloseVolPopover)
+    volPopover.addEventListener('mouseenter', openVolPopover)
+    volPopover.addEventListener('mouseleave', scheduleCloseVolPopover)
 
     // Transmissão sem áudio (a pessoa escolheu "Sem som" ao compartilhar,
     // ou a captura de áudio falhou) — bloqueia o controle de volume dessa
@@ -1373,7 +1477,7 @@ function upsertStreamCard(uid, stream) {
     }
 
     // Clique no ícone = mutar/desmutar direto (não abre nada — abrir o
-    // slider agora é só passar o mouse, ver .vol-control:hover no CSS).
+    // slider agora é só passar o mouse, ver openVolPopover/.vol-control.open acima).
     volIcon.addEventListener('click', (e) => {
       e.stopPropagation()
       const isMuted = video.muted || Number(slider.value) === 0
@@ -1689,6 +1793,7 @@ function stopSharing() {
   state.localStream = null
   state.sharing = false
   updateSelfPreview()
+  stopSnapshotLoop()
 
   $('btn-toggle-share').classList.remove('sharing')
   $('btn-toggle-share').title = 'Compartilhar tela'
@@ -1726,6 +1831,7 @@ $('btn-leave').onclick = () => {
   state.connecting.clear()
   state.remoteStreams = {}
   state.focusedId = null
+  state.screenSnapshots = {}
   Object.values(state.statsIntervals).forEach(id => clearInterval(id))
   state.statsIntervals = {}
   if (document.pictureInPictureElement) document.exitPictureInPicture().catch(() => {})
