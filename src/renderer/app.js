@@ -109,11 +109,6 @@ const state = {
   // <audio> criado em runtime por participante, só pra tocar o mic dele
   // (ver createVoicePeer/ontrack) — nunca aparece na tela.
   voiceAudioEls: {},
-  // Stream crua de cada participante, exatamente como chegou do WebRTC —
-  // guardada à parte porque o <audio> às vezes toca ela diretamente e às
-  // vezes toca a versão passada pelo GainNode (ver applyVoiceVolume/
-  // setupVoiceAmplifier), dependendo se o volume pedido passa de 100%.
-  voiceRawStreams: {},
   // Minha captura de microfone — uma só, compartilhada com todas as
   // conexões de voz (o mesmo MediaStreamTrack é adicionado em cada uma).
   localMicStream: null,
@@ -1241,14 +1236,29 @@ function createVoicePeer(remoteId) {
       applyOutputDevice(audioEl)
     }
 
-    // Guarda a stream crua e descarta qualquer cadeia de ganho antiga (uma
-    // reconexão manda uma stream nova) — quem decide se toca ela direto ou
-    // passa pelo GainNode é applyVoiceVolume, de acordo com o volume atual.
-    state.voiceRawStreams[remoteId] = stream
+    // Reconexão manda uma stream nova — descarta a cadeia de ganho antiga
+    // (ela lia da stream velha, que já era pra ter parado de existir).
     removeVoiceAmplifier(remoteId)
-    applyVoiceVolume(remoteId)
 
+    // O <audio> toca a stream crua do WebRTC direto, sempre, e nunca troca
+    // de srcObject depois disso — é o caminho comprovadamente confiável,
+    // sem nenhuma dependência do Web Audio (já tentei rotear o áudio
+    // recebido por um AudioContext antes de chegar aqui, em mais de uma
+    // versão, e isso deixou a saída de áudio inteira muda). Quem amplifica
+    // acima de 100% é applyVoiceVolume, e faz isso à parte: muta este
+    // elemento e manda o som, já com ganho de verdade, direto pro
+    // AudioContext.destination (ver setupVoiceAmplifier).
+    if (audioEl.srcObject !== stream) {
+      audioEl.srcObject = stream
+      audioEl.play().catch((err) => {
+        console.warn(`[VOICE] Autoplay bloqueado para ${remoteId}:`, err)
+      })
+    }
+
+    // Precisa rodar antes de applyVoiceVolume — é quem cria a fonte
+    // compartilhada (ver getRemoteVoiceSource) que o amplificador reusa.
     setupRemoteVoiceAnalyser(remoteId, stream)
+    applyVoiceVolume(remoteId)
   }
 
   return pc
@@ -1296,7 +1306,6 @@ function closeVoicePeer(uid) {
     audioEl.remove()
     delete state.voiceAudioEls[uid]
   }
-  delete state.voiceRawStreams[uid]
   removeVoiceAmplifier(uid)
   removeVoiceAnalyser(uid)
   removeRemoteVoiceSource(uid)
@@ -1332,31 +1341,34 @@ $('chk-mic-muted').onchange = () => {
 }
 
 // ── Amplificador de voz — GainNode por participante, só quando precisa ──
-// HTMLMediaElement.volume só aceita 0–1 (0–100%): jogar 1.5 ali dá exceção.
-// Então, ATÉ 100%, o <audio> toca a stream crua do WebRTC direto — igual
-// sempre funcionou — e só ganha ao Web Audio quando o volume pedido passa
-// de 100% (ver applyVoiceVolume), caso em que uma cadeia
-// GainNode→DynamicsCompressorNode→MediaStreamDestination amplifica de
-// verdade antes de chegar no <audio> (o compressor evita estourar/distorcer
-// perto de 200%). Isso mantém o caso comum (0–100%) livre de qualquer
-// dependência do Web Audio, sem risco de regressão nele.
+// HTMLMediaElement.volume só aceita 0–1 (0–100%): jogar 1.5 ali dá exceção,
+// e a rota "GainNode → MediaStreamDestination → novo srcObject no <audio>"
+// (as duas tentativas anteriores) mostrou ser instável nesse app — em vez
+// de só falhar acima de 100%, chegou a silenciar TODA a saída de voz. Por
+// isso a amplificação agora nem passa pelo <audio>: uma cadeia
+// GainNode→DynamicsCompressorNode (o compressor evita estourar perto de
+// 200%) liga direto em AudioContext.destination — o jeito mais padrão e
+// testado de dar ganho real com Web Audio, sem depender de reempacotar o
+// som numa stream nova pra tocar de novo num elemento. O <audio> cru (ver
+// ontrack em createVoicePeer) nunca muda de stream; só é mutado enquanto a
+// cadeia amplificada está ativa, pra não ouvir os dois ao mesmo tempo.
 // Usa a MESMA fonte compartilhada do analisador (ver getRemoteVoiceSource
 // acima) — nunca cria uma segunda fonte pra mesma stream.
-// voiceGainNodes: uid -> { source, gain, compressor, dest }
+// voiceGainNodes: uid -> { source, gain, compressor, connected }
 const voiceGainNodes = {}
 
-function setupVoiceAmplifier(uid, stream) {
+function setupVoiceAmplifier(uid) {
+  const entry = remoteVoiceSources[uid]
+  if (!entry) return null // fonte ainda não existe — setupRemoteVoiceAnalyser roda antes disso no ontrack
   try {
     const ctx = getVoiceAudioContext()
-    const source = getRemoteVoiceSource(uid, stream)
     const gain = ctx.createGain()
     const compressor = ctx.createDynamicsCompressor()
-    const dest = ctx.createMediaStreamDestination()
-    source.connect(gain)
+    entry.source.connect(gain)
     gain.connect(compressor)
-    compressor.connect(dest)
-    voiceGainNodes[uid] = { source, gain, compressor, dest }
-    return dest.stream
+    const chain = { source: entry.source, gain, compressor, connected: false }
+    voiceGainNodes[uid] = chain
+    return chain
   } catch (err) {
     console.warn(`[VOICE AMP] Falha ao montar cadeia de ganho para ${uid}, ficando limitado a 100%:`, err)
     return null
@@ -1371,7 +1383,7 @@ function removeVoiceAmplifier(uid) {
   // disconnect() sem alvo na fonte cortaria a análise de voz junto.
   try { chain.source.disconnect(chain.gain) } catch { /* já desconectado */ }
   try { chain.gain.disconnect() } catch { /* já desconectado */ }
-  try { chain.compressor.disconnect() } catch { /* já desconectado */ }
+  try { chain.compressor.disconnect() } catch { /* já desconectado (compressor→destination) */ }
   delete voiceGainNodes[uid]
 }
 
@@ -1384,37 +1396,44 @@ function getParticipantVolume(uid) {
 
 function applyVoiceVolume(uid) {
   const audioEl = state.voiceAudioEls[uid]
-  const rawStream = state.voiceRawStreams[uid]
-  if (!audioEl || !rawStream) { updateParticipantVolIndicator(uid); return }
-
   const vol = getParticipantVolume(uid)
   const effective = (state.masterVolume / 100) * (vol / 100)
+  const ctx = getVoiceAudioContext()
 
-  if (effective <= 1) {
-    // Caminho direto, sem Web Audio — o mesmo que já funcionava antes do
-    // amplificador existir, e continua sendo o padrão até 100%.
-    removeVoiceAmplifier(uid)
-    if (audioEl.srcObject !== rawStream) {
-      audioEl.srcObject = rawStream
-      audioEl.play().catch((err) => console.warn(`[VOICE] Autoplay bloqueado para ${uid}:`, err))
-    }
-    audioEl.volume = effective
-  } else {
-    // >100% — o <audio> sozinho não sobe daqui, precisa do GainNode.
-    audioEl.volume = 1
+  if (effective > 1) {
+    // Precisa de ganho de verdade — o <audio> sozinho não passa de 100%.
     let chain = voiceGainNodes[uid]
-    if (!chain) {
-      const amplifiedStream = setupVoiceAmplifier(uid, rawStream)
-      chain = voiceGainNodes[uid]
-      if (amplifiedStream && audioEl.srcObject !== amplifiedStream) {
-        audioEl.srcObject = amplifiedStream
-        audioEl.play().catch((err) => console.warn(`[VOICE] Autoplay bloqueado para ${uid}:`, err))
+    if (!chain) chain = setupVoiceAmplifier(uid)
+
+    if (chain) {
+      if (!chain.connected) {
+        chain.compressor.connect(ctx.destination)
+        chain.connected = true
       }
+      chain.gain.gain.setTargetAtTime(effective, ctx.currentTime, 0.01)
+      // O <audio> cru continua tocando a stream original por baixo — muta
+      // ele aqui pra não somar com a cópia amplificada que agora sai
+      // direto pelo AudioContext.destination.
+      if (audioEl) audioEl.muted = true
+    } else if (audioEl) {
+      // Web Audio indisponível — melhor esforço, sem passar de 100%.
+      audioEl.muted = false
+      audioEl.volume = 1
     }
-    if (chain) chain.gain.gain.setTargetAtTime(effective, chain.gain.context.currentTime, 0.01)
+  } else {
+    // Até 100%: só o <audio> cru toca, direto, sem depender do Web Audio —
+    // igual sempre funcionou.
+    const chain = voiceGainNodes[uid]
+    if (chain?.connected) {
+      try { chain.compressor.disconnect(ctx.destination) } catch { /* já desconectado */ }
+      chain.connected = false
+    }
+    if (audioEl) {
+      audioEl.volume = effective
+      audioEl.muted = effective === 0
+    }
   }
 
-  audioEl.muted = effective === 0
   updateParticipantVolIndicator(uid)
 }
 
@@ -1517,9 +1536,26 @@ document.addEventListener('click', (e) => {
 //    mensagem nova no WebSocket. ──
 let voiceAudioCtx = null
 function getVoiceAudioContext() {
-  if (!voiceAudioCtx) voiceAudioCtx = new AudioContext()
+  if (!voiceAudioCtx) {
+    voiceAudioCtx = new AudioContext()
+    applyVoiceContextOutputDevice()
+  }
   if (voiceAudioCtx.state === 'suspended') voiceAudioCtx.resume().catch(() => {})
   return voiceAudioCtx
+}
+
+// Espelha o dispositivo de saída escolhido (ver applyOutputDevice, usado
+// nos <audio>) também no AudioContext — necessário porque o áudio
+// amplificado (ver setupVoiceAmplifier) sai direto por ctx.destination, não
+// por um <audio>, então setSinkId precisa ser chamado aqui também pra não
+// tocar num dispositivo diferente do resto do chat de voz.
+async function applyVoiceContextOutputDevice() {
+  if (!voiceAudioCtx || !state.speakerDeviceId || typeof voiceAudioCtx.setSinkId !== 'function') return
+  try {
+    await voiceAudioCtx.setSinkId(state.speakerDeviceId)
+  } catch (err) {
+    console.warn('[SINK] Falha ao aplicar dispositivo de saída no áudio amplificado:', err)
+  }
 }
 
 const voiceAnalysers = {} // uid (ou '__self__') -> { analyser, dataArray }
@@ -1694,9 +1730,11 @@ async function switchMicDevice(deviceId) {
 $('select-speaker').addEventListener('change', async () => {
   state.speakerDeviceId = $('select-speaker').value
   sessionStorage.setItem(SPEAKER_DEVICE_KEY, state.speakerDeviceId)
-  // Aplica no áudio de cada participante já conectado e no áudio de teste.
+  // Aplica no áudio de cada participante já conectado, no áudio de teste e
+  // no AudioContext (áudio amplificado — ver applyVoiceContextOutputDevice).
   await Promise.all(Object.values(state.voiceAudioEls).map(applyOutputDevice))
   await applyOutputDevice($('mic-test-audio'))
+  await applyVoiceContextOutputDevice()
 })
 
 async function applyOutputDevice(audioEl) {
