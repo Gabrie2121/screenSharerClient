@@ -24,6 +24,19 @@ const MASTER_VOLUME_KEY = 'sharesync:master-volume'
 const NOISE_SUPPRESSION_KEY = 'sharesync:noise-suppression'
 const NOISE_INTENSITY_KEY = 'sharesync:noise-intensity'
 
+// Login — últimos nome/servidor/sala usados, pra preencher os campos
+// sozinho na próxima vez que o app abrir (ver preenchimento perto do fim
+// da seção LOGIN e o salvamento em enterRoom).
+const LAST_NAME_KEY = 'sharesync:last-name'
+const LAST_SERVER_KEY = 'sharesync:last-server'
+const LAST_ROOM_KEY = 'sharesync:last-room-id'
+
+// Volume por participante — salvo pelo NOME (não pelo id de socket, que é
+// gerado de novo a cada conexão e não sobreviveria a um reabrir do app).
+// Mapa completo mora em localStorage como { [username]: volume }; ver
+// loadSavedVolumeByName/saveVolumeByName na seção "CHAT DE VOZ".
+const PARTICIPANT_VOLUMES_KEY = 'sharesync:participant-volumes'
+
 const state = {
   myId:      null,
   myName:    '',
@@ -68,14 +81,14 @@ const state = {
   localStream: null,
   sharing: false,
 
-  // Preferência de mostrar a autovisualização — persiste em sessionStorage
+  // Preferência de mostrar a autovisualização — persiste em localStorage
   // (SELF_PREVIEW_KEY) e vira o padrão pras próximas vezes que compartilhar.
-  showSelfPreview: sessionStorage.getItem(SELF_PREVIEW_KEY) === 'true',
+  showSelfPreview: localStorage.getItem(SELF_PREVIEW_KEY) === 'true',
 
   // Qualidade padrão ao começar a assistir alguém (Configurações → Live) —
   // 'auto' ou uma altura em px ('360'/'480'/'720'/'1080'). Dá pra mudar na
   // hora por live, no seletor de cada card (ver upsertStreamCard).
-  defaultWatchQuality: sessionStorage.getItem(DEFAULT_WATCH_QUALITY_KEY) || 'auto',
+  defaultWatchQuality: localStorage.getItem(DEFAULT_WATCH_QUALITY_KEY) || 'auto',
 
   // Stream em foco na tela (as demais ficam minimizadas embaixo)
   focusedId: null,
@@ -113,16 +126,16 @@ const state = {
   // conexões de voz (o mesmo MediaStreamTrack é adicionado em cada uma).
   localMicStream: null,
   localMicInputStream: null,
-  micMuted: sessionStorage.getItem(MIC_MUTED_KEY) === 'true',
-  micDeviceId: sessionStorage.getItem(MIC_DEVICE_KEY) || '',
-  speakerDeviceId: sessionStorage.getItem(SPEAKER_DEVICE_KEY) || '',
+  micMuted: localStorage.getItem(MIC_MUTED_KEY) === 'true',
+  micDeviceId: localStorage.getItem(MIC_DEVICE_KEY) || '',
+  speakerDeviceId: localStorage.getItem(SPEAKER_DEVICE_KEY) || '',
   // Só o volume POR PARTICIPANTE (ver participantVolumes abaixo) amplifica
   // além de 100% — o geral serve pra abaixar tudo de uma vez, por isso fica
   // travado em 0-100 (o Math.min cobre quem tinha um valor antigo >100
   // salvo de uma versão anterior deste slider).
-  masterVolume: Math.min(100, Number(sessionStorage.getItem(MASTER_VOLUME_KEY) ?? 100)),
-  noiseSuppression: sessionStorage.getItem(NOISE_SUPPRESSION_KEY) !== 'false',
-  noiseIntensity: Number(sessionStorage.getItem(NOISE_INTENSITY_KEY) ?? 85),
+  masterVolume: Math.min(100, Number(localStorage.getItem(MASTER_VOLUME_KEY) ?? 100)),
+  noiseSuppression: localStorage.getItem(NOISE_SUPPRESSION_KEY) !== 'false',
+  noiseIntensity: Number(localStorage.getItem(NOISE_INTENSITY_KEY) ?? 85),
   // Volume individual que EU escolhi pra ouvir cada participante (local,
   // não afeta o que os outros ouvem) — 0-100, 100 é o padrão.
   participantVolumes: {},
@@ -431,6 +444,18 @@ window.electronAPI?.onUpdateError(({ message }) => {
 // ──────────────────────────────────────────────
 // LOGIN
 // ──────────────────────────────────────────────
+// Preenche nome/servidor/sala com os últimos usados (salvos em enterRoom)
+// pra não precisar redigitar toda vez que o app abre — só sobrescreve o
+// valor padrão do HTML se já houver algo salvo.
+{
+  const savedName = localStorage.getItem(LAST_NAME_KEY)
+  if (savedName) $('input-name').value = savedName
+  const savedServer = localStorage.getItem(LAST_SERVER_KEY)
+  if (savedServer) $('input-server').value = savedServer
+  const savedRoomId = localStorage.getItem(LAST_ROOM_KEY)
+  if (savedRoomId) $('input-room-id').value = savedRoomId
+}
+
 // Troca o conteúdo do botão por um spinner + "Conectando…" enquanto tenta
 // entrar na sala (some sozinho quando conecta ou dá erro — ver enterRoom).
 function setButtonLoading(btn, loading) {
@@ -494,6 +519,12 @@ function enterRoom(name, server, roomId) {
   state.roomId   = roomId
   manualDisconnect = false
   hasEnteredRoom = false
+
+  // Guarda pra preencher os campos sozinho na próxima vez que o app abrir
+  // (ver preenchimento logo abaixo do login, no carregamento do script).
+  localStorage.setItem(LAST_NAME_KEY, name)
+  localStorage.setItem(LAST_SERVER_KEY, server)
+  localStorage.setItem(LAST_ROOM_KEY, roomId)
 
   appLog('INFO', `Entrando na sala ${roomId} como "${name}" (servidor: ${server})`)
   connectWebSocket()
@@ -688,6 +719,7 @@ async function handleMessage(msg) {
       for (const [uid, u] of Object.entries(msg.users || {})) {
         if (uid !== state.myId) {
           state.users[uid] = u
+          seedParticipantVolume(uid, u.username)
         }
       }
       renderParticipants()
@@ -701,6 +733,7 @@ async function handleMessage(msg) {
     case 'user-joined':
       if (msg.user_id !== state.myId) {
         state.users[msg.user_id] = { username: msg.username, sharing: false }
+        seedParticipantVolume(msg.user_id, msg.username)
         renderParticipants()
         toast(`${msg.username} entrou na sala`)
       }
@@ -1342,13 +1375,13 @@ function applyMicMuteState() {
 $('btn-toggle-mic').onclick = async () => {
   if (!state.localMicStream) await ensureLocalMicStream()
   state.micMuted = !state.micMuted
-  sessionStorage.setItem(MIC_MUTED_KEY, String(state.micMuted))
+  localStorage.setItem(MIC_MUTED_KEY, String(state.micMuted))
   applyMicMuteState()
 }
 
 $('chk-mic-muted').onchange = () => {
   state.micMuted = $('chk-mic-muted').checked
-  sessionStorage.setItem(MIC_MUTED_KEY, String(state.micMuted))
+  localStorage.setItem(MIC_MUTED_KEY, String(state.micMuted))
   applyMicMuteState()
 }
 
@@ -1404,6 +1437,35 @@ function removeVoiceAmplifier(uid) {
 // amplifica de verdade (não é só "desmutar mais alto") via GainNode acima.
 function getParticipantVolume(uid) {
   return state.participantVolumes[uid] ?? 100
+}
+
+// Persistência do volume por NOME — sobrevive a reconexões, novas salas e
+// reaberturas do app (diferente de state.participantVolumes, que é indexado
+// pelo id de socket da sessão atual e é descartado ao sair da sala).
+function loadVolumesByName() {
+  try {
+    return JSON.parse(localStorage.getItem(PARTICIPANT_VOLUMES_KEY) || '{}')
+  } catch {
+    return {}
+  }
+}
+
+function saveVolumeByName(username, vol) {
+  if (!username) return
+  const map = loadVolumesByName()
+  map[username] = vol
+  localStorage.setItem(PARTICIPANT_VOLUMES_KEY, JSON.stringify(map))
+}
+
+// Chamado sempre que um participante aparece na sala (room-info/user-joined)
+// — recupera o volume salvo da última vez que ouvimos essa pessoa (por
+// nome) e já inicializa participantVolumes/participantLastVolume com ele,
+// pra applyVoiceVolume não usar o padrão 100% à toa.
+function seedParticipantVolume(uid, username) {
+  const saved = loadVolumesByName()[username]
+  if (saved == null) return
+  state.participantVolumes[uid] = saved
+  state.participantLastVolume[uid] = saved > 0 ? saved : 100
 }
 
 function applyVoiceVolume(uid) {
@@ -1510,6 +1572,7 @@ $('pv-slider').addEventListener('input', () => {
   const v = Number($('pv-slider').value)
   if (v > 0) state.participantLastVolume[volumePopoverUid] = v
   state.participantVolumes[volumePopoverUid] = v
+  saveVolumeByName(state.users[volumePopoverUid]?.username, v)
   applyVoiceVolume(volumePopoverUid)
   $('pv-value').textContent = `${v}%`
   updatePvMuteIcon(v)
@@ -1526,6 +1589,7 @@ $('pv-mute-btn').addEventListener('click', (e) => {
     state.participantVolumes[volumePopoverUid] = state.participantLastVolume[volumePopoverUid] || 100
   }
   const newVol = state.participantVolumes[volumePopoverUid]
+  saveVolumeByName(state.users[volumePopoverUid]?.username, newVol)
   applyVoiceVolume(volumePopoverUid)
   $('pv-slider').value = newVol
   $('pv-value').textContent = `${newVol}%`
@@ -1704,7 +1768,7 @@ $('select-mic').addEventListener('change', async () => {
 
 async function switchMicDevice(deviceId) {
   state.micDeviceId = deviceId
-  sessionStorage.setItem(MIC_DEVICE_KEY, deviceId)
+  localStorage.setItem(MIC_DEVICE_KEY, deviceId)
   if (!state.localMicStream) return // será usado na próxima vez que ensureLocalMicStream rodar
 
   let newInputStream = null
@@ -1741,7 +1805,7 @@ async function switchMicDevice(deviceId) {
 
 $('select-speaker').addEventListener('change', async () => {
   state.speakerDeviceId = $('select-speaker').value
-  sessionStorage.setItem(SPEAKER_DEVICE_KEY, state.speakerDeviceId)
+  localStorage.setItem(SPEAKER_DEVICE_KEY, state.speakerDeviceId)
   // Aplica no áudio de cada participante já conectado, no áudio de teste e
   // no AudioContext (áudio amplificado — ver applyVoiceContextOutputDevice).
   await Promise.all(Object.values(state.voiceAudioEls).map(applyOutputDevice))
@@ -1769,7 +1833,7 @@ masterVolumeValue.textContent = `${state.masterVolume}%`
 masterVolumeSlider.addEventListener('input', () => {
   state.masterVolume = Number(masterVolumeSlider.value)
   masterVolumeValue.textContent = `${state.masterVolume}%`
-  sessionStorage.setItem(MASTER_VOLUME_KEY, String(state.masterVolume))
+  localStorage.setItem(MASTER_VOLUME_KEY, String(state.masterVolume))
   applyAllVoiceVolumes()
 })
 
@@ -1777,7 +1841,7 @@ const chkNoiseSuppression = $('chk-noise-suppression')
 chkNoiseSuppression.checked = state.noiseSuppression
 chkNoiseSuppression.onchange = async () => {
   state.noiseSuppression = chkNoiseSuppression.checked
-  sessionStorage.setItem(NOISE_SUPPRESSION_KEY, String(state.noiseSuppression))
+  localStorage.setItem(NOISE_SUPPRESSION_KEY, String(state.noiseSuppression))
   if (state.localMicStream) await switchMicDevice(state.micDeviceId)
 }
 
@@ -1788,7 +1852,7 @@ noiseSuppressionValue.value = `${state.noiseIntensity}%`
 noiseSuppressionSlider.addEventListener('input', () => {
   state.noiseIntensity = Number(noiseSuppressionSlider.value)
   noiseSuppressionValue.value = `${state.noiseIntensity}%`
-  sessionStorage.setItem(NOISE_INTENSITY_KEY, String(state.noiseIntensity))
+  localStorage.setItem(NOISE_INTENSITY_KEY, String(state.noiseIntensity))
   updateNoiseIntensity()
 })
 
@@ -1914,13 +1978,13 @@ document.querySelectorAll('.settings-tab').forEach((tab) => {
 })
 
 // Autovisualização — opcional, canto inferior direito, sempre mudo.
-// Preferência salva em sessionStorage e usada como padrão dali pra frente.
+// Preferência salva em localStorage e usada como padrão dali pra frente.
 const chkSelfPreview = $('chk-self-preview')
 chkSelfPreview.checked = state.showSelfPreview
 
 chkSelfPreview.onchange = () => {
   state.showSelfPreview = chkSelfPreview.checked
-  sessionStorage.setItem(SELF_PREVIEW_KEY, String(state.showSelfPreview))
+  localStorage.setItem(SELF_PREVIEW_KEY, String(state.showSelfPreview))
   updateSelfPreview()
 }
 
@@ -1932,7 +1996,7 @@ selDefaultWatchQuality.value = state.defaultWatchQuality
 
 selDefaultWatchQuality.onchange = () => {
   state.defaultWatchQuality = selDefaultWatchQuality.value
-  sessionStorage.setItem(DEFAULT_WATCH_QUALITY_KEY, state.defaultWatchQuality)
+  localStorage.setItem(DEFAULT_WATCH_QUALITY_KEY, state.defaultWatchQuality)
 }
 
 function updateSelfPreview() {
@@ -2026,8 +2090,8 @@ let selectedQuality = {
   resolution: 1080,
   fps: 30,
   // Vem por padrão com som; se a pessoa mudar no modal, fica salvo em
-  // sessionStorage e essa vira a escolha padrão dali pra frente.
-  audio: sessionStorage.getItem(SHARE_AUDIO_KEY) !== 'off',
+  // localStorage e essa vira a escolha padrão dali pra frente.
+  audio: localStorage.getItem(SHARE_AUDIO_KEY) !== 'off',
 }
 
 async function startSharing() {
@@ -2088,7 +2152,7 @@ setupQualityGroup('quality-resolution', (v) => { selectedQuality.resolution = v 
 setupQualityGroup('quality-fps', (v) => { selectedQuality.fps = v })
 setupQualityGroup('quality-audio', (v) => {
   selectedQuality.audio = v === 'on'
-  sessionStorage.setItem(SHARE_AUDIO_KEY, v)
+  localStorage.setItem(SHARE_AUDIO_KEY, v)
 }, (v) => v)
 
 // Reflete a preferência salva no botão certo (o HTML vem com "Com som"
