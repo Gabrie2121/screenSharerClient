@@ -524,6 +524,39 @@ input[type="text"]::placeholder { color: var(--text3); }
   display: block;
 }
 
+/* ═══════════════════════════════════════════
+   PRÉVIA AO PASSAR O MOUSE (participante compartilhando, na sidebar)
+═══════════════════════════════════════════ */
+.participant-preview {
+  position: fixed;
+  z-index: 200;
+  width: 160px;
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  box-shadow: 0 8px 24px rgba(0,0,0,.4);
+  padding: 4px;
+  pointer-events: none;
+}
+.participant-preview.hidden { display: none; }
+.participant-preview canvas {
+  display: block;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  border-radius: 4px;
+  background: #000;
+  /* Borrada de propósito — é só um preview, não a transmissão em si */
+  filter: blur(3px);
+}
+.participant-preview canvas.hidden { display: none; }
+.participant-preview-empty {
+  font-size: 10px;
+  color: var(--text3);
+  text-align: center;
+  padding: 30px 4px;
+}
+.participant-preview-empty.hidden { display: none; }
+
 /* STAGE */
 .stage {
   flex: 1;
@@ -704,35 +737,51 @@ input[type="text"]::placeholder { color: var(--text3); }
 }
 .quality-select:hover { border-color: var(--accent); color: var(--accent); }
 
-/* Volume — dropdown: o ícone abre um popover com o slider por cima de
-   tudo, em vez de uma barra fixa ocupando espaço embaixo da transmissão. */
+/* Volume — passar o mouse já mostra o slider (sem precisar clicar);
+   clicar no ícone muta/desmuta direto (ver JS). A porcentagem some com o
+   slider; enquanto arrasta, vira um tooltip grudado no cursor (.vol-tooltip
+   mais abaixo), não um valor fixo dentro do popover. */
 .vol-control { position: relative; }
 .vol-popover {
   position: absolute;
   top: calc(100% + 6px);
   right: 0;
   z-index: 6;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  width: 160px;
+  width: 120px;
   background: var(--bg2);
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   padding: 10px 12px;
   box-shadow: 0 8px 24px rgba(0,0,0,.4);
   cursor: default;
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(-4px);
+  transition: opacity .15s, transform .15s;
 }
-.vol-popover.hidden { display: none; }
-.vol-popover .vol-slider { flex: 1; accent-color: var(--accent); cursor: pointer; }
-.vol-popover .vol-value {
+.vol-control:hover .vol-popover {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateY(0);
+}
+.vol-popover .vol-slider { width: 100%; accent-color: var(--accent); cursor: pointer; }
+/* Tooltip da porcentagem — segue o cursor (posicionado via JS em cada
+   mousemove no slider), não fica fixo num canto do popover. */
+.vol-tooltip {
+  position: fixed;
+  z-index: 50;
+  transform: translate(-50%, -130%);
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 2px 6px;
   font-size: 11px;
-  color: var(--text3);
-  width: 32px;
-  text-align: right;
   font-family: var(--mono);
-  flex-shrink: 0;
+  color: var(--text);
+  pointer-events: none;
+  white-space: nowrap;
 }
+.vol-tooltip.hidden { display: none; }
 .stream-video-wrap {
   position: relative;
   /* Trava a proporção em 16:9 (padrão de tela cheia) — sem isso a altura da
@@ -744,6 +793,8 @@ input[type="text"]::placeholder { color: var(--text3); }
   width: 100%;
   display: flex;
   min-height: 0;
+  /* Recorta o vídeo com zoom (scroll do mouse, ver JS) nos limites do card */
+  overflow: hidden;
 }
 /* No modo foco a altura é definida pelo layout (não pela proporção do
    vídeo — a pessoa pode estar compartilhando algo fora de 16:9), então
@@ -759,7 +810,10 @@ input[type="text"]::placeholder { color: var(--text3); }
   object-fit: contain;
   background: #000;
   display: block;
+  transition: transform .08s ease-out;
 }
+/* Zoom com scroll do mouse (ver wheel em upsertStreamCard) */
+.stream-video.zoomed { cursor: zoom-out; }
 
 /* Tela cheia de uma stream específica (ver JS — card.requestFullscreen()).
    Cabeçalho e controles viram overlays flutuantes por cima do vídeo em vez

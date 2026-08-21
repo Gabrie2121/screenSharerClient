@@ -619,6 +619,11 @@ async function handleMessage(msg) {
 // ──────────────────────────────────────────────
 function renderParticipants() {
   const list = $('participants-list')
+  // Se a lista for reconstruída com a prévia de alguém aberta (ex.: outra
+  // pessoa entrou/saiu bem nesse momento), o <li> antigo some do DOM sem
+  // disparar mouseleave — sem isso, o intervalo do preview ficava rodando
+  // pra sempre. hideParticipantPreview() limpa antes de reconstruir tudo.
+  hideParticipantPreview()
   list.innerHTML = ''
 
   // Eu mesmo
@@ -664,7 +669,52 @@ function makeParticipantItem(uid, name, sharing, isMe) {
     watchBtn.onclick = () => toggleWatch(uid)
   }
 
+  // Prévia ao passar o mouse — só funciona pra quem você já está
+  // assistindo (reaproveita o frame que já está decodificando, sem custo
+  // de rede nenhum). Pra quem você ainda não assiste, mostra uma dica em
+  // vez de tentar simular uma prévia de verdade (exigiria abrir uma
+  // conexão WebRTC só pra isso, que não seria "leve").
+  if (!isMe && sharing) {
+    li.addEventListener('mouseenter', () => showParticipantPreview(uid, li))
+    li.addEventListener('mouseleave', hideParticipantPreview)
+  }
+
   return li
+}
+
+let participantPreviewTimer = null
+
+function showParticipantPreview(uid, li) {
+  const preview = $('participant-preview')
+  const rect = li.getBoundingClientRect()
+  preview.style.left = `${rect.right + 8}px`
+  preview.style.top = `${rect.top}px`
+  preview.classList.remove('hidden')
+
+  const canvas = $('participant-preview-canvas')
+  const emptyMsg = $('participant-preview-empty')
+  const video = document.querySelector(`.stream-card[data-stream="${uid}"] video`)
+
+  clearInterval(participantPreviewTimer)
+  if (!video || !state.remoteStreams[uid]) {
+    canvas.classList.add('hidden')
+    emptyMsg.classList.remove('hidden')
+    return
+  }
+  canvas.classList.remove('hidden')
+  emptyMsg.classList.add('hidden')
+  const ctx = canvas.getContext('2d')
+  const draw = () => {
+    try { ctx.drawImage(video, 0, 0, canvas.width, canvas.height) } catch { /* frame ainda não pronto */ }
+  }
+  draw()
+  participantPreviewTimer = setInterval(draw, 1500) // só uma prévia, não precisa ser fluida
+}
+
+function hideParticipantPreview() {
+  clearInterval(participantPreviewTimer)
+  participantPreviewTimer = null
+  $('participant-preview')?.classList.add('hidden')
 }
 
 // ──────────────────────────────────────────────
@@ -1234,11 +1284,11 @@ function upsertStreamCard(uid, stream) {
           </select>
 
           <div class="vol-control">
-            <button type="button" class="vol-icon muted" title="Volume">🔇</button>
-            <div class="vol-popover hidden">
+            <button type="button" class="vol-icon muted" title="Mutar/Desmutar">🔇</button>
+            <div class="vol-popover">
               <input type="range" class="vol-slider" min="0" max="100" value="0" />
-              <span class="vol-value">0%</span>
             </div>
+            <div class="vol-tooltip hidden"></div>
           </div>
 
           <button type="button" class="fullscreen-btn" title="Tela cheia">⛶</button>
@@ -1268,15 +1318,42 @@ function upsertStreamCard(uid, stream) {
       toggleFocus(uid)
     })
 
-    // Controle de volume — dropdown: clicar no ícone abre/fecha um
-    // popover com o slider (0% a 100%, mostra a porcentagem ao arrastar),
-    // em vez de uma barra fixa ocupando espaço embaixo da transmissão. A
-    // live sempre começa mutada (0%) — a pessoa escolhe ativar o som.
+    // Zoom com o scroll do mouse — só nessa live específica (o wheel não
+    // sobe pra rolar o resto da página), scroll pra cima aumenta, pra
+    // baixo diminui. Aplicado só no vídeo (não no card inteiro) e sempre
+    // em direção ao ponto onde está o cursor, pra não "fugir" a imagem.
+    const videoWrap = card.querySelector('.stream-video-wrap')
+    const zoomVideo = card.querySelector('video')
+    let zoomLevel = 1
+    const ZOOM_MIN = 1
+    const ZOOM_MAX = 3
+    const ZOOM_STEP = 0.15
+
+    videoWrap.addEventListener('wheel', (e) => {
+      e.preventDefault()
+      e.stopPropagation()
+      const next = zoomLevel + (e.deltaY < 0 ? ZOOM_STEP : -ZOOM_STEP)
+      zoomLevel = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, next))
+
+      const rect = videoWrap.getBoundingClientRect()
+      const originX = ((e.clientX - rect.left) / rect.width) * 100
+      const originY = ((e.clientY - rect.top) / rect.height) * 100
+      zoomVideo.style.transformOrigin = `${originX}% ${originY}%`
+      zoomVideo.style.transform = zoomLevel > 1 ? `scale(${zoomLevel.toFixed(2)})` : ''
+      zoomVideo.classList.toggle('zoomed', zoomLevel > 1)
+    }, { passive: false })
+
+    // Controle de volume — passar o mouse já abre o slider (CSS
+    // `:hover`, ver style.css), sem precisar clicar. Clicar no ícone
+    // muta/desmuta direto. A porcentagem some junto com o slider quando o
+    // mouse sai — enquanto arrasta, aparece como um tooltip preso no
+    // próprio cursor, não fixo num lugar. A live sempre começa mutada
+    // (0%) — a pessoa escolhe ativar o som.
     const video = card.querySelector('video')
     const slider = card.querySelector('.vol-slider')
-    const volValue = card.querySelector('.vol-value')
     const volIcon = card.querySelector('.vol-icon')
-    const volPopover = card.querySelector('.vol-popover')
+    const volTooltip = card.querySelector('.vol-tooltip')
+    let lastVolume = 100 // pra restaurar ao clicar no ícone depois de mutar
 
     // Transmissão sem áudio (a pessoa escolheu "Sem som" ao compartilhar,
     // ou a captura de áudio falhou) — bloqueia o controle de volume dessa
@@ -1287,7 +1364,6 @@ function upsertStreamCard(uid, stream) {
       volIcon.textContent = '🔇'
       volIcon.title = 'Esta transmissão não tem áudio'
       volIcon.classList.add('muted')
-      volValue.textContent = '—'
     }
 
     function syncVolumeIcon() {
@@ -1296,26 +1372,51 @@ function upsertStreamCard(uid, stream) {
       volIcon.classList.toggle('muted', muted)
     }
 
-    // Clicar no ícone abre/fecha o popover do slider (fecha sozinho ao
-    // clicar fora — ver listener global no fim do arquivo).
+    // Clique no ícone = mutar/desmutar direto (não abre nada — abrir o
+    // slider agora é só passar o mouse, ver .vol-control:hover no CSS).
     volIcon.addEventListener('click', (e) => {
       e.stopPropagation()
-      document.querySelectorAll('.vol-popover').forEach(p => {
-        if (p !== volPopover) p.classList.add('hidden')
-      })
-      volPopover.classList.toggle('hidden')
+      const isMuted = video.muted || Number(slider.value) === 0
+      if (isMuted) {
+        const restore = lastVolume > 0 ? lastVolume : 100
+        slider.value = restore
+        video.volume = restore / 100
+        video.muted = false
+      } else {
+        lastVolume = Number(slider.value) || lastVolume
+        slider.value = 0
+        video.volume = 0
+        video.muted = true
+      }
+      syncVolumeIcon()
+      if (video.paused) video.play().catch(() => {})
     })
-    volPopover.addEventListener('click', (e) => e.stopPropagation())
 
-    slider.addEventListener('input', () => {
+    slider.addEventListener('click', (e) => e.stopPropagation())
+
+    // Tooltip com a porcentagem grudado no cursor enquanto o mouse está
+    // em cima do slider (arrastando ou não) — não fica fixo num canto.
+    function moveVolTooltip(e) {
+      volTooltip.textContent = `${slider.value}%`
+      volTooltip.style.left = `${e.clientX}px`
+      volTooltip.style.top = `${e.clientY}px`
+    }
+    slider.addEventListener('mouseenter', (e) => {
+      moveVolTooltip(e)
+      volTooltip.classList.remove('hidden')
+    })
+    slider.addEventListener('mousemove', moveVolTooltip)
+    slider.addEventListener('mouseleave', () => volTooltip.classList.add('hidden'))
+
+    slider.addEventListener('input', (e) => {
       const v = Number(slider.value)
       video.volume = v / 100
       // Se o autoplay mudo inicial não conseguiu desmutar sozinho (ver
       // comentário mais abaixo), essa interação do usuário é um gesto
       // válido pro navegador permitir desmutar aqui.
       video.muted = v === 0
-      volValue.textContent = `${v}%`
       syncVolumeIcon()
+      moveVolTooltip(e)
       if (video.paused) video.play().catch(() => {})
     })
 
@@ -1479,13 +1580,6 @@ function toggleFocus(uid) {
   state.focusedId = state.focusedId === uid ? null : uid
   updateGridLayout()
 }
-
-// Fecha qualquer popover de volume aberto ao clicar fora dele (os cliques
-// dentro do popover e no ícone que abre já param a propagação antes de
-// chegar aqui — ver upsertStreamCard).
-document.addEventListener('click', () => {
-  document.querySelectorAll('.vol-popover:not(.hidden)').forEach(p => p.classList.add('hidden'))
-})
 
 // ──────────────────────────────────────────────
 // TELA CHEIA — sincroniza o botão de cada card e corrige o grid ao sair.

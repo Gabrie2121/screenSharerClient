@@ -6,7 +6,8 @@
   "scripts": {
     "start": "electron .",
     "build": "electron-builder build --win",
-    "release": "electron-builder build --win --publish always"
+    "release": "electron-builder build --win --publish always",
+    "release:linux": "electron-builder build --linux rpm --publish always"
   },
   "build": {
     "appId": "com.sharesync.app",
@@ -22,6 +23,12 @@
       "oneClick": false,
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true
+    },
+    "linux": {
+      "target": ["rpm"],
+      "category": "Network",
+      "synopsis": "Compartilhamento de tela via WebRTC",
+      "icon": "src/assets/icon.ico"
     },
     "publish": {
       "provider": "github",

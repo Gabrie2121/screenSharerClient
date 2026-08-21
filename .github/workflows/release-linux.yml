@@ -1,0 +1,30 @@
+name: Release Linux (RPM)
+
+# Builda e publica o instalador .rpm no GitHub Releases. Precisa rodar num
+# Linux de verdade (rpmbuild etc.) — por isso é Actions e não o
+# `npm run release` local, que só builda o instalador Windows (NSIS).
+#
+# Disparo manual: aba "Actions" do repositório → "Release Linux (RPM)" →
+# "Run workflow". A versão publicada é a que estiver em package.json
+# (mesma lógica do release do Windows — lembre de dar bump na versão antes).
+on:
+  workflow_dispatch:
+
+jobs:
+  build-rpm:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - run: npm ci
+
+      - name: Build + publica o .rpm no GitHub Releases
+        run: npm run release:linux
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

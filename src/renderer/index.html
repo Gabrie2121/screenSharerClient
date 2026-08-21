@@ -217,6 +217,17 @@
     <video id="self-preview-video" autoplay muted playsinline></video>
   </div>
 
+  <!-- PRÉVIA AO PASSAR O MOUSE — sobre um participante que está
+       compartilhando, na lista da sidebar. Só funciona pra quem você já
+       está assistindo (reaproveita o frame que já está sendo decodificado
+       ali, sem custo de rede — é a opção mais leve possível; iniciar uma
+       conexão WebRTC só pra um hover não seria "leve"). Pra quem você
+       ainda não assiste, mostra uma dica em vez de tentar simular algo. -->
+  <div id="participant-preview" class="participant-preview hidden">
+    <canvas id="participant-preview-canvas" width="160" height="90"></canvas>
+    <div id="participant-preview-empty" class="participant-preview-empty hidden">Assista pra ver uma prévia</div>
+  </div>
+
   <script src="app.js"></script>
 </body>
 </html>
