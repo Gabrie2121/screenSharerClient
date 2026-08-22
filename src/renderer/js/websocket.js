@@ -101,20 +101,8 @@ export function connectWebSocket() {
     if (hasEnteredRoom && !isReconnecting) toast('Erro de conexão com o servidor.')
   }
 
-  state.ws.onclose = (event) => {
-    /* O código de fechamento é o que separa três causas muito diferentes
-       que apareciam todas como "Desconectado do servidor":
-         1000/1001 → o servidor encerrou de propósito (restart, deploy)
-         1006      → queda abrupta, sem close frame: rede da pessoa, Wi-Fi
-                     caindo, ou o processo do servidor morrendo
-         1011      → erro interno do servidor
-       Junto vai o último RTT medido: ping subindo antes da queda aponta
-       rede degradando; queda com ping baixo e estável aponta o outro lado. */
-    const rtt = state.pingHistory[state.pingHistory.length - 1]
-    appLog('WARN', `Desconectado do servidor — código ${event?.code ?? '?'}`
-      + `${event?.reason ? ` (${event.reason})` : ''}`
-      + `, limpo=${event?.wasClean ?? '?'}`
-      + `, último ping=${rtt != null ? rtt + 'ms' : 'n/d'}`)
+  state.ws.onclose = () => {
+    appLog('WARN', 'Desconectado do servidor.')
 
     /* ── DERRUBA TODA A MÍDIA DA SALA ──
        Sem o servidor não há sinalização, então nenhuma dessas conexões tem
