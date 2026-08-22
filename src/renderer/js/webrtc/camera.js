@@ -82,6 +82,7 @@ export async function startCamera() {
 
   renderCameraStrip()
   renderParticipants()
+  playSound('camera-on')
   appLog('INFO', 'Câmera ligada')
   toast('Sua câmera está ligada.')
 }
@@ -112,6 +113,7 @@ export function stopCamera() {
   if (state.stagedCamId === state.myId) state.stagedCamId = null
   renderCameraStrip()
   renderParticipants()
+  playSound('camera-off')
   appLog('INFO', 'Câmera desligada')
 }
 
@@ -235,6 +237,19 @@ export async function handleCamIceCandidate(fromId, payload) {
 export function closeCamPeer(uid) {
   state.camPeers[uid]?.close()
   delete state.camPeers[uid]
+}
+
+// "Fechar a câmera de alguém" — para de RECEBER a câmera daquela pessoa,
+// só pra mim. Não desliga a câmera dela nem avisa ninguém: é o equivalente
+// do "parar de assistir" da tela, e por isso usa o mesmo ícone.
+//
+// Ela continua transmitindo pros outros; se ela desligar e religar a
+// câmera, a oferta nova chega e o tile volta a aparecer aqui — o que é o
+// comportamento desejado, porque aí é uma transmissão nova.
+export function hideCameraOf(uid) {
+  closeCamViewPeer(uid)
+  renderCameraStrip()
+  appLog('INFO', `Câmera de ${uid.slice(0, 8)} fechada localmente`)
 }
 
 export function closeCamViewPeer(uid) {

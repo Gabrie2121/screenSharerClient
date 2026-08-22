@@ -18,17 +18,17 @@ export function renderParticipants() {
   list.innerHTML = ''
 
   // Eu mesmo
-  const meLi = makeParticipantItem(state.myId, state.myName, state.sharing, true, state.cameraOn)
+  const meLi = makeParticipantItem(state.myId, state.myName, state.sharing, true, state.cameraOn, state.micMuted)
   list.appendChild(meLi)
 
   // Outros
   for (const [uid, u] of Object.entries(state.users)) {
-    const li = makeParticipantItem(uid, u.username, u.sharing, false, u.camera)
+    const li = makeParticipantItem(uid, u.username, u.sharing, false, u.camera, u.mic_muted)
     list.appendChild(li)
   }
 }
 
-function makeParticipantItem(uid, name, sharing, isMe, camera = false) {
+function makeParticipantItem(uid, name, sharing, isMe, camera = false, micMuted = false) {
   const li = document.createElement('li')
   li.className = 'participant-item'
   li.dataset.uid = uid
@@ -50,6 +50,7 @@ function makeParticipantItem(uid, name, sharing, isMe, camera = false) {
       <div class="participant-name">${name}${isMe ? ' (você)' : ''}</div>
       <div class="participant-status ${sharing ? 'sharing' : ''}">${statusText}</div>
     </div>
+    ${micMuted ? '<span class="participant-mic-indicator" title="Microfone mutado">🔇</span>' : ''}
     ${camera ? '<span class="participant-cam-indicator" title="Câmera ligada">📷</span>' : ''}
     ${!isMe
       ? `<span class="participant-vol-indicator" title="Volume: ${vol}% — clique para ajustar">${vol === 0 ? '🔇' : (vol > 100 ? '📢' : '🔊')}</span>`

@@ -36,6 +36,15 @@ function createWindow() {
       preload: path.join(__dirname, '..', 'preload.js'),
       contextIsolation: true,
       nodeIntegration: false,
+      // Com a janela escondida (bandeja) ou minimizada, o Chromium
+      // estrangula timers e requestAnimationFrame do renderer até quase
+      // parar. Isso justamente quando o app mais precisa continuar
+      // desenhando: o mini player do PiP compõe as streams num <canvas>
+      // por timer (ver js/auto-pip.js), e sob throttling ele congelava no
+      // último quadro — o vídeo parecia travado ou preto exatamente
+      // enquanto minimizado. Também mantém a captura de tela e as
+      // conexões WebRTC com ritmo normal em segundo plano.
+      backgroundThrottling: false,
     },
   })
 

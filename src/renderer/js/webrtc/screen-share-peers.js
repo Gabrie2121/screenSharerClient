@@ -1,5 +1,6 @@
 import { appLog } from '../core/logger.js'
 import { toast } from '../core/toast.js'
+import { playSound } from '../core/sounds.js'
 import { state } from '../core/state.js'
 import { ICE_CONFIG } from '../core/ice-config.js'
 import { attachIceDebug, noteRemoteCandidate } from '../core/ice-debug.js'
@@ -269,6 +270,36 @@ export async function replaceSharedStream(stream) {
   await reapplyAllViewerQuality()
 }
 
+/* ═══════════════════════════════════════════════════════════════
+   AVISO DE "ALGUÉM ESTÁ TE ASSISTINDO"
+   Toca alguns segundos DEPOIS da oferta chegar, não na hora: no instante
+   da offer a conexão ainda está negociando ICE e pode nem completar (ver o
+   timeout de 25s). Esperando, o som só sai quando a pessoa de fato já está
+   te vendo — que é a informação que importa pra quem está compartilhando.
+
+   Um timer por espectador, cancelado se a conexão morrer antes da hora
+   (closeSharePeer) — senão o aviso tocaria pra alguém que desistiu.
+═══════════════════════════════════════════════════════════════ */
+const VIEWER_SOUND_DELAY_MS = 3000
+const viewerSoundTimers = {}
+
+function scheduleViewerSound(uid) {
+  clearTimeout(viewerSoundTimers[uid])
+  viewerSoundTimers[uid] = setTimeout(() => {
+    delete viewerSoundTimers[uid]
+    // Só avisa se a conexão sobreviveu até aqui.
+    if (!state.sharePeers[uid]) return
+    playSound('viewer-joined')
+    const name = state.users[uid]?.username || 'Alguém'
+    toast(`${name} está assistindo sua tela.`)
+  }, VIEWER_SOUND_DELAY_MS)
+}
+
+function cancelViewerSound(uid) {
+  clearTimeout(viewerSoundTimers[uid])
+  delete viewerSoundTimers[uid]
+}
+
 // Recebe offer (alguém quer assistir minha tela) — eu respondo como sharer
 export async function handleOffer(fromId, offer) {
   console.log('[OFFER recebida de]', fromId, '| sharing:', state.sharing)
@@ -303,6 +334,7 @@ export async function handleOffer(fromId, offer) {
   // tela não vai sair, por mais que o ICE conecte.
   appLog('INFO', `[SHARE] answer para ${fromId.slice(0, 8)} — ${sdpDirections(answer.sdp)}`)
   sendWS({ type: 'answer', to: fromId, payload: answer })
+  scheduleViewerSound(fromId)
 }
 
 export async function handleAnswer(fromId, answer) {
@@ -400,4 +432,5 @@ export function closeSharePeer(uid) {
   state.sharePeers[uid]?.close()
   delete state.sharePeers[uid]
   delete state.viewerQuality[uid]
+  cancelViewerSound(uid)
 }

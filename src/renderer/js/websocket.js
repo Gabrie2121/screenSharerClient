@@ -8,6 +8,7 @@ import { startPing, stopPing, handlePong } from './ping.js'
 import { renderParticipants, removeUser } from './participants.js'
 import { seedParticipantVolume } from './voice/volume.js'
 import { removeStreamCard } from './stream-cards.js'
+import { stopSharing } from './webrtc/capture.js'
 import {
   closeWatchPeer, stopWatchTimeout, handleOffer, handleAnswer,
   handleIceCandidate, applyViewerQuality,
@@ -15,6 +16,7 @@ import {
 import {
   initVoiceChat, handleVoiceOffer, handleVoiceAnswer, handleVoiceIceCandidate,
 } from './voice/peers.js'
+import { announceMicState } from './voice/mic.js'
 import {
   handleCamOffer, handleCamAnswer, handleCamIceCandidate,
   offerCameraTo, cleanupCameraForUser, playCameraSound, reannounceCamera,
@@ -101,7 +103,24 @@ export function connectWebSocket() {
 
   state.ws.onclose = () => {
     appLog('WARN', 'Desconectado do servidor.')
-    // Limpa peers
+
+    /* ── DERRUBA TODA A MÍDIA DA SALA ──
+       Sem o servidor não há sinalização, então nenhuma dessas conexões tem
+       como se restabelecer nem como ser renegociada. Antes daqui só as
+       RTCPeerConnection eram fechadas, e o resto ficava para trás: os cards
+       continuavam no palco congelados mostrando o último frame, a lista de
+       participantes seguia dizendo "Assistindo", os intervalos de getStats
+       ficavam rodando contra conexões mortas, e — o pior — state.sharing
+       continuava ligado, com a captura de tela viva e o indicador do
+       Windows aceso, dando a impressão de que você ainda estava
+       transmitindo para uma sala que não existe mais.
+
+       stopSharing com notifyServer: false porque o socket já morreu: mandar
+       'stop-sharing' não chegaria a ninguém, e o toast normal ("Você parou
+       de compartilhar") culparia a pessoa por algo que foi queda do
+       servidor. O aviso certo é o de desconexão, logo abaixo. */
+    stopSharing({ notifyServer: false })
+
     Object.values(state.watchPeers).forEach(pc => pc.close())
     Object.values(state.sharePeers).forEach(pc => pc.close())
     Object.values(state.voicePeers).forEach(pc => pc.close())
@@ -110,6 +129,17 @@ export function connectWebSocket() {
     state.watchPeers = {}
     state.sharePeers = {}
     state.voicePeers = {}
+
+    // Tira do palco tudo o que eu estava assistindo. removeStreamCard já
+    // cuida de sair do PiP/tela cheia e de limpar o statsInterval do card.
+    Object.keys(state.watchTimeouts).forEach(uid => stopWatchTimeout(uid))
+    state.watching.forEach(uid => removeStreamCard(uid))
+    Object.keys(state.remoteStreams).forEach(uid => removeStreamCard(uid))
+    state.watching.clear()
+    state.connecting.clear()
+    state.remoteStreams = {}
+    state.viewerQuality = {}
+    state.focusedId = null
     // A captura da própria câmera continua viva (state.localCamStream) —
     // como o microfone, não faz sentido pedir permissão de novo a cada
     // reconexão. Só as conexões com cada participante caem; elas são
@@ -127,6 +157,7 @@ export function connectWebSocket() {
     clearRemoteVoiceAnalysers()
     state.speaking.clear()
     stopPing()
+    renderParticipants()
 
     if (manualDisconnect) return
 
@@ -184,12 +215,15 @@ async function handleMessage(msg) {
       // câmera foram todas fechadas no onclose — preciso me anunciar e
       // reofertar, senão eu ficaria "com a câmera ligada" só pra mim.
       reannounceCamera()
+      // O mudo persiste entre sessões (localStorage) e o servidor assume
+      // False, então quem entra já mutado precisa corrigir isso na sala.
+      announceMicState()
       break
 
     // Novo usuário entrou
     case 'user-joined':
       if (msg.user_id !== state.myId) {
-        state.users[msg.user_id] = { username: msg.username, sharing: false, camera: false }
+        state.users[msg.user_id] = { username: msg.username, sharing: false, camera: false, mic_muted: false }
         seedParticipantVolume(msg.user_id, msg.username)
         renderParticipants()
         toast(`${msg.username} entrou na sala`)
@@ -256,6 +290,15 @@ async function handleMessage(msg) {
       if (state.users[msg.user_id]) {
         state.users[msg.user_id].camera = false
         cleanupCameraForUser(msg.user_id)
+        renderParticipants()
+      }
+      break
+
+    // Alguém mutou ou desmutou o microfone — só estado pra UI, nenhuma
+    // conexão de voz é aberta ou fechada por isso.
+    case 'user-mic-state':
+      if (state.users[msg.user_id]) {
+        state.users[msg.user_id].mic_muted = !!msg.payload?.muted
         renderParticipants()
       }
       break

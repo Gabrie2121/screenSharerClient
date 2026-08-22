@@ -10,6 +10,8 @@ export const SELF_PREVIEW_POS_KEY = 'sharesync:self-preview-pos'
 export const DEFAULT_WATCH_QUALITY_KEY = 'sharesync:default-watch-quality'
 // PiP automático ao minimizar/esconder o app (ver js/auto-pip.js).
 export const AUTO_PIP_KEY = 'sharesync:auto-pip'
+// O que o mini player mostra: 'auto' | 'screens' | 'cameras' (ver js/auto-pip.js).
+export const PIP_SOURCE_KEY = 'sharesync:pip-source'
 export const SHARE_AUDIO_KEY = 'sharesync:share-audio'
 
 // Chat de voz — preferências persistidas (ver seção "CHAT DE VOZ" em js/voice/).
@@ -97,6 +99,8 @@ export const state = {
   // minimizado ou escondido pra bandeja (ver js/auto-pip.js). Ligado por
   // padrão — é o motivo de o app ir pra bandeja em vez de fechar.
   autoPip: localStorage.getItem(AUTO_PIP_KEY) !== 'false',
+  // Padrão 'auto': mostra tudo o que estiver aberto, telas e câmeras.
+  pipSource: localStorage.getItem(PIP_SOURCE_KEY) || 'auto',
 
   // Qualidade que cada espectador pediu da MINHA tela — { viewerId: altura|null }.
   // Precisa ficar guardado porque applyViewerQuality calcula o

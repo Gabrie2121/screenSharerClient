@@ -69,6 +69,29 @@
   pointer-events: none;
 }
 
+/* Fechar a câmera de alguém — para de receber só pra mim, sem desligar a
+   câmera da pessoa. Aparece no hover, canto oposto ao nome. */
+.camera-tile-close {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: none;
+  border-radius: 5px;
+  background: rgba(0,0,0,.6);
+  color: #eef1f6;
+  font-size: 12px;
+  line-height: 1;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity .15s, background .15s;
+}
+.camera-tile:hover .camera-tile-close { opacity: 1; }
+.camera-tile-close:hover { background: var(--red, #e05c5c); }
+.camera-tile-close.hidden { display: none; }
+
 /* ═══════════════════════════════════════════
    CÂMERA NO PALCO — o tile promovido por um clique. Divide o palco com o
    grid de telas em vez de substituí-lo: dá pra ver a tela de alguém e a

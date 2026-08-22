@@ -5,6 +5,7 @@ import {
 } from './core/state.js'
 import { previewSound } from './core/sounds.js'
 import { populateCameraSelect } from './webrtc/camera.js'
+import { setPipSource } from './auto-pip.js'
 import { populateAudioDeviceSelects, stopMicTest } from './voice/device-settings.js'
 import { updateSelfPreview } from './self-preview.js'
 
@@ -93,6 +94,12 @@ chkAutoPip.onchange = () => {
   state.autoPip = chkAutoPip.checked
   localStorage.setItem(AUTO_PIP_KEY, String(state.autoPip))
 }
+
+// O que o mini player mostra. Também é trocável ao vivo, com o app
+// minimizado, pelos botões de faixa da janela do PiP (ver auto-pip.js).
+const selPipSource = $('pip-source')
+selPipSource.value = state.pipSource
+selPipSource.onchange = () => setPipSource(selPipSource.value)
 
 // Qualidade padrão ao assistir — aplicada de saída a cada nova live que
 // você começa a assistir; a pessoa ainda pode trocar na hora, por live, no
