@@ -207,6 +207,9 @@
         <button type="button" class="settings-tab" role="tab" aria-selected="false" aria-controls="settings-video" data-settings-tab="video">
           <span class="settings-tab-icon">▣</span> Vídeo
         </button>
+        <button type="button" class="settings-tab" role="tab" aria-selected="false" aria-controls="settings-advanced" data-settings-tab="advanced">
+          <span class="settings-tab-icon">⚙</span> Avançado
+        </button>
       </div>
 
       <div class="settings-body">
@@ -374,6 +377,35 @@
               <option value="360">360p</option>
             </select>
           </div>
+          </div>
+        </div>
+
+        <!-- DIAGNÓSTICO — o caminho do log muda entre build de
+             desenvolvimento e empacotada, então quem informa é o próprio
+             app (ver get-log-path em src/main/ipc.js). -->
+        <div class="settings-panel" id="settings-advanced" role="tabpanel" hidden>
+          <div class="settings-section">
+            <h3 class="settings-section-title">Diagnóstico</h3>
+
+            <div class="settings-row settings-row-column">
+              <div class="settings-row-text">
+                <span class="settings-row-label">Registro de eventos (log)</span>
+                <span class="settings-row-hint">Gravado continuamente enquanto o app roda — dá para abrir sem fechar nada. É o que responde por que uma tela não carregou ou o som não tocou.</span>
+              </div>
+              <code id="log-path" class="log-path">carregando…</code>
+              <div class="log-actions">
+                <button type="button" class="btn-secondary" id="btn-open-logs">Abrir pasta do log</button>
+                <button type="button" class="btn-secondary" id="btn-copy-log-path">Copiar caminho</button>
+              </div>
+            </div>
+
+            <div class="settings-row">
+              <div class="settings-row-text">
+                <span class="settings-row-label">Ferramentas do desenvolvedor</span>
+                <span class="settings-row-hint">Console e rede, também na versão instalada. Atalho: F12 ou Ctrl+Shift+I.</span>
+              </div>
+              <button type="button" class="btn-secondary" id="btn-devtools">Abrir DevTools</button>
+            </div>
           </div>
         </div>
       </div>

@@ -1,4 +1,5 @@
 import { $ } from './core/dom.js'
+import { toast } from './core/toast.js'
 import {
   state, SELF_PREVIEW_KEY, DEFAULT_WATCH_QUALITY_KEY, AUTO_PIP_KEY,
   SOUNDS_ENABLED_KEY, SOUNDS_VOLUME_KEY,
@@ -111,3 +112,29 @@ selDefaultWatchQuality.onchange = () => {
   state.defaultWatchQuality = selDefaultWatchQuality.value
   localStorage.setItem(DEFAULT_WATCH_QUALITY_KEY, state.defaultWatchQuality)
 }
+
+/* ═══════════════════════════════════════════════════════════════
+   DIAGNÓSTICO (aba Avançado)
+   O caminho do log muda entre rodar em desenvolvimento e a build
+   empacotada (app.getName() passa a ser "ShareSync"), então quem informa é
+   o processo principal — não vale chumbar caminho aqui.
+═══════════════════════════════════════════════════════════════ */
+const logPathEl = $('log-path')
+let logPath = ''
+
+window.electronAPI?.getLogPath().then((p) => {
+  logPath = p
+  logPathEl.textContent = p
+}).catch(() => {
+  logPathEl.textContent = 'não disponível'
+})
+
+$('btn-open-logs').onclick = () => window.electronAPI?.openLogs()
+
+$('btn-copy-log-path').onclick = async () => {
+  if (!logPath) return
+  await navigator.clipboard.writeText(logPath)
+  toast('Caminho do log copiado!')
+}
+
+$('btn-devtools').onclick = () => window.electronAPI?.toggleDevTools()
