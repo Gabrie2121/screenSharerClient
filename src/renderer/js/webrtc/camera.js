@@ -4,6 +4,7 @@ import { toast } from '../core/toast.js'
 import { playSound } from '../core/sounds.js'
 import { state, CAM_DEVICE_KEY } from '../core/state.js'
 import { ICE_CONFIG } from '../core/ice-config.js'
+import { attachIceDebug, noteRemoteCandidate } from '../core/ice-debug.js'
 import { sendWS } from '../websocket.js'
 import { renderParticipants } from '../participants.js'
 import { renderCameraStrip, removeCameraTile } from '../camera-strip.js'
@@ -128,6 +129,7 @@ function createCamPeer(remoteId, role) {
 
   const pc = new RTCPeerConnection(ICE_CONFIG)
   map[remoteId] = pc
+  attachIceDebug(pc, `camera/${role} ${remoteId.slice(0, 8)}`)
 
   pc.onicecandidate = (e) => {
     if (e.candidate) {
@@ -223,6 +225,7 @@ export async function handleCamIceCandidate(fromId, payload) {
     return
   }
   try {
+    noteRemoteCandidate(pc, payload.candidate)
     await pc.addIceCandidate(new RTCIceCandidate(payload.candidate))
   } catch (err) {
     console.warn('[CAM ICE ERROR]', err)

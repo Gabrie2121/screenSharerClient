@@ -2,6 +2,7 @@ import { appLog } from '../core/logger.js'
 import { toast } from '../core/toast.js'
 import { state } from '../core/state.js'
 import { ICE_CONFIG } from '../core/ice-config.js'
+import { attachIceDebug, noteRemoteCandidate } from '../core/ice-debug.js'
 import { sendWS } from '../websocket.js'
 import { renderParticipants } from '../participants.js'
 import { upsertStreamCard, removeStreamCard } from '../stream-cards.js'
@@ -68,6 +69,7 @@ async function startPeerConnection(remoteId) {
     offerToReceiveAudio: true,
   })
   await pc.setLocalDescription(offer)
+  appLog('INFO', `[SHARE] offer enviada para ${remoteId.slice(0, 8)} — ${sdpDirections(offer.sdp)}`)
 
   sendWS({ type: 'offer', to: remoteId, payload: offer })
 }
@@ -88,6 +90,7 @@ function createPeer(remoteId, role) {
 
   const pc = new RTCPeerConnection(ICE_CONFIG)
   map[remoteId] = pc
+  attachIceDebug(pc, `tela/${role} ${remoteId.slice(0, 8)}`)
 
   pc.onicecandidate = (e) => {
     if (e.candidate) {
@@ -105,7 +108,14 @@ function createPeer(remoteId, role) {
     console.log(`[CONN ${role} ${remoteId}]`, pc.connectionState)
 
     if (pc.connectionState === 'failed') {
-      appLog('WARN', `Conexão (${role}) com ${remoteId} falhou (ICE não conseguiu conectar nem via TURN)`)
+      // Sem adivinhar a causa: 'failed' cobre ICE que não fechou, DTLS que
+      // não subiu e o outro lado que sumiu. A mensagem antiga afirmava que
+      // era "ICE nem via TURN", o que mandou uma investigação inteira pro
+      // lado errado enquanto o bug real estava no msid do SDP. Quem diz o
+      // que aconteceu de fato é o [ICE ...] de core/ice-debug.js, logo acima
+      // desta linha no log.
+      appLog('WARN', `Conexão (${role}) com ${remoteId} entrou em 'failed'`
+        + ' — ver a linha [ICE ...] acima para a causa')
 
       if (role === 'watcher') {
         // Se eu estava assistindo essa pessoa, limpa o card e deixa
@@ -128,8 +138,27 @@ function createPeer(remoteId, role) {
   if (role === 'watcher') {
     pc.ontrack = (e) => {
       console.log(`[TRACK de ${remoteId}]`, e.track.kind, e.streams)
-      const stream = e.streams[0]
-      if (!stream) return
+
+      // e.streams[0] só vem preenchido quando o SDP do outro lado traz
+      // `a=msid`, e msid só existe quando o track foi anexado com
+      // addTrack(track, stream). Um sender montado apenas com
+      // replaceTrack() (transceiver criado pelo setRemoteDescription) não
+      // gera msid nenhum, e aqui chegava e.streams VAZIO.
+      //
+      // Antes isso caía num `return` mudo: o track chegava, o ICE estava
+      // conectado, e mesmo assim o botão ficava "Conectando…" até o
+      // timeout de 25s, sem nada no log explicando. Agora, na falta de
+      // msid, a stream é montada aqui — e tracks que chegam depois
+      // (áudio depois do vídeo) entram na MESMA stream, senão o card
+      // trocaria de srcObject no meio e perderia a imagem.
+      let stream = e.streams[0]
+      if (!stream) {
+        stream = state.remoteStreams[remoteId] || new MediaStream()
+        if (!stream.getTracks().includes(e.track)) stream.addTrack(e.track)
+        appLog('INFO', `[SHARE] track de ${e.track.kind} sem msid de ${remoteId.slice(0, 8)}`
+          + ' — stream remontada localmente')
+      }
+
       stopWatchTimeout(remoteId)
       // Só agora o botão vira "Assistindo" — antes disso ficava
       // "Conectando…" (ver makeParticipantItem) pra ninguém clicar de
@@ -142,10 +171,9 @@ function createPeer(remoteId, role) {
     }
   }
 
-  // Obs.: a conexão de sharer NÃO recebe addTrack aqui. As tracks entram em
-  // applySharedStreamToPeer, depois do setRemoteDescription (ver handleOffer)
-  // — é o que garante um sender de áudio mesmo quando a captura atual não tem
-  // áudio, e é isso que permite trocar de tela depois sem renegociar.
+  // Obs.: quem compartilha faz o addTrack em handleOffer, não aqui — precisa
+  // ser com a state.localStream junto (pelo msid, ver o comentário lá) e
+  // antes do setRemoteDescription.
   return pc
 }
 
@@ -180,25 +208,52 @@ export async function applySharedStreamToPeer(pc, stream) {
     audio: stream?.getAudioTracks()[0] || null,
   }
 
+  // Diagnóstico via appLog (que grava em disco), NÃO console.warn: uma falha
+  // aqui aparece pro usuário só como "Conectando…" pra sempre, e um warn de
+  // console não sobrevive pra contar a história depois.
+  appLog('INFO', `[SHARE] montando conexão — transceivers: `
+    + (pc.getTransceivers().map(t =>
+        `${t.receiver?.track?.kind ?? '?'}/${t.direction}`).join(' ') || 'NENHUM'))
+
   for (const kind of ['video', 'audio']) {
     // O kind do transceiver vem do receiver: o sender pode estar sem track
     // nenhuma (justamente o caso do áudio numa captura "Sem som").
     const tr = pc.getTransceivers().find(t => t.receiver?.track?.kind === kind)
     if (!tr) {
-      // Só aconteceria contra um cliente antigo que ofertasse sem a m-line
-      // de áudio. Não dá pra addTransceiver aqui (criaria uma m-line que a
-      // offer não tem, e a answer não poderia incluí-la) — segue sem esse kind.
-      if (wanted[kind]) console.warn(`[SHARE] Sem transceiver de ${kind} nesta conexão`)
+      // Se isso acontecer com o VÍDEO, a conexão nasce morta: a answer sai
+      // sem m-line de envio, o ontrack do outro lado nunca dispara e o
+      // botão fica "Conectando…" até o timeout de 25s.
+      appLog(wanted[kind] ? 'ERROR' : 'INFO',
+        `[SHARE] sem transceiver de ${kind} nesta conexão`
+        + (wanted[kind] ? ' — a tela NÃO será enviada' : ''))
       continue
     }
 
     tr.direction = 'sendonly'
     try {
-      await tr.sender.replaceTrack(wanted[kind])
+      // Pula quando o addTrack de handleOffer já pôs exatamente este track:
+      // substituir por ele mesmo é desperdício, e mexer à toa num sender já
+      // negociado é justamente o tipo de coisa que quebra em silêncio.
+      if (tr.sender.track !== wanted[kind]) await tr.sender.replaceTrack(wanted[kind])
+      appLog('INFO', `[SHARE] ${kind}: direction=${tr.direction} `
+        + `track=${tr.sender.track?.kind ?? 'null'} msid=${tr.sender.track ? 'sim' : 'n/a'}`)
     } catch (err) {
-      console.warn(`[SHARE] Falha ao aplicar track de ${kind}:`, err)
+      appLog('ERROR', `[SHARE] replaceTrack de ${kind} falhou: ${err.name} ${err.message}`)
     }
   }
+}
+
+// Direções das m-lines de um SDP — é o que prova se a answer realmente
+// oferece vídeo em envio. Sem isso a depuração vira adivinhação.
+export function sdpDirections(sdp) {
+  const res = []
+  for (const line of (sdp || '').split(/\r?\n/)) {
+    if (line.startsWith('m=')) res.push([line.slice(2).split(' ')[0], '?'])
+    else if (/^a=(sendrecv|sendonly|recvonly|inactive)$/.test(line) && res.length) {
+      res[res.length - 1][1] = line.slice(2)
+    }
+  }
+  return res.map(([k, d]) => `${k}:${d}`).join(' ') || '(sem m-lines)'
 }
 
 // Troca a tela transmitida em TODAS as conexões de quem me assiste, sem
@@ -225,17 +280,28 @@ export async function handleOffer(fromId, offer) {
 
   const pc = createPeer(fromId, 'sharer')
 
+  // addTrack COM a stream, antes do setRemoteDescription. Os dois detalhes
+  // importam: é o addTrack (e não o replaceTrack) que escreve `a=msid` no
+  // SDP, e é o msid que faz o e.streams[0] chegar preenchido no ontrack do
+  // outro lado. Montar o sender só com replaceTrack depois do SRD gerava
+  // uma answer sem msid — o ICE conectava, o vídeo chegava, e o ontrack de
+  // quem assistia descartava tudo por não ter stream, deixando o botão em
+  // "Conectando…" pra sempre. É o mesmo caminho que câmera e voz já usam.
+  state.localStream.getTracks().forEach(track => pc.addTrack(track, state.localStream))
+
   await pc.setRemoteDescription(new RTCSessionDescription(offer))
 
-  // Só agora dá pra montar os senders: os transceivers desta conexão só
-  // existem depois que a offer de quem assiste foi aplicada (ver
-  // applySharedStreamToPeer pro porquê de ser aqui e não no createPeer).
+  // Depois do SRD, completa a forma da conexão: garante o sender de áudio
+  // mesmo quando a captura é "Sem som" (ver applySharedStreamToPeer), que é
+  // o que permite trocar de tela depois sem renegociar.
   await applySharedStreamToPeer(pc, state.localStream)
 
   const answer = await pc.createAnswer()
   await pc.setLocalDescription(answer)
 
-  console.log('[ANSWER enviado para]', fromId)
+  // A linha que responde tudo: se o vídeo aqui não estiver "sendonly", a
+  // tela não vai sair, por mais que o ICE conecte.
+  appLog('INFO', `[SHARE] answer para ${fromId.slice(0, 8)} — ${sdpDirections(answer.sdp)}`)
   sendWS({ type: 'answer', to: fromId, payload: answer })
 }
 
@@ -244,7 +310,12 @@ export async function handleAnswer(fromId, answer) {
   // Só a minha conexão de watcher fica esperando uma answer.
   const pc = state.watchPeers[fromId]
   if (!pc) return
+  appLog('INFO', `[SHARE] answer recebida de ${fromId.slice(0, 8)} — ${sdpDirections(answer?.sdp)}`)
   await pc.setRemoteDescription(new RTCSessionDescription(answer))
+  // ontrack já deveria ter disparado neste ponto (em Unified Plan ele vem do
+  // setRemoteDescription, antes de qualquer mídia fluir).
+  appLog('INFO', `[SHARE] após aplicar answer de ${fromId.slice(0, 8)}: `
+    + `stream recebida=${!!state.remoteStreams[fromId]}`)
 }
 
 export async function handleIceCandidate(fromId, payload) {
@@ -259,6 +330,7 @@ export async function handleIceCandidate(fromId, payload) {
     return
   }
   try {
+    noteRemoteCandidate(pc, payload.candidate)
     await pc.addIceCandidate(new RTCIceCandidate(payload.candidate))
   } catch (e) {
     console.warn('[ICE ERROR]', e)

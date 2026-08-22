@@ -20,6 +20,7 @@ import './core/dom.js'
 import './core/logger.js'
 import './core/toast.js'
 import './core/ice-config.js'
+import './core/ice-debug.js'
 
 // Janela + tela de login
 import './titlebar.js'
