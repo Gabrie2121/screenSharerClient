@@ -3,16 +3,30 @@
    que precisam dele (importe `state` e leia/grave direto nas chaves).
 ═══════════════════════════════════════════════════════════════ */
 export const SELF_PREVIEW_KEY = 'sharesync:show-self-preview'
+// Onde a autovisualização ficou por último — { left, top, width }. É posição
+// de janela, não de sala: vale pra qualquer sala que a pessoa entrar depois
+// (ver js/self-preview.js).
+export const SELF_PREVIEW_POS_KEY = 'sharesync:self-preview-pos'
 export const DEFAULT_WATCH_QUALITY_KEY = 'sharesync:default-watch-quality'
+// PiP automático ao minimizar/esconder o app (ver js/auto-pip.js).
+export const AUTO_PIP_KEY = 'sharesync:auto-pip'
 export const SHARE_AUDIO_KEY = 'sharesync:share-audio'
 
 // Chat de voz — preferências persistidas (ver seção "CHAT DE VOZ" em js/voice/).
 export const MIC_MUTED_KEY = 'sharesync:mic-muted'
 export const MIC_DEVICE_KEY = 'sharesync:mic-device'
 export const SPEAKER_DEVICE_KEY = 'sharesync:speaker-device'
+// Câmera escolhida em Configurações → Vídeo (ver js/webrtc/camera.js).
+export const CAM_DEVICE_KEY = 'sharesync:cam-device'
 export const MASTER_VOLUME_KEY = 'sharesync:master-volume'
 export const NOISE_SUPPRESSION_KEY = 'sharesync:noise-suppression'
 export const NOISE_INTENSITY_KEY = 'sharesync:noise-intensity'
+
+// Avisos sonoros (ver core/sounds.js) — liga/desliga e volume, separados do
+// volume do chat de voz: são coisas diferentes e a pessoa costuma querer o
+// aviso bem mais baixo que as vozes.
+export const SOUNDS_ENABLED_KEY = 'sharesync:sounds-enabled'
+export const SOUNDS_VOLUME_KEY = 'sharesync:sounds-volume'
 
 // Login — últimos nome/servidor/sala usados, pra preencher os campos
 // sozinho na próxima vez que o app abrir (ver js/login.js).
@@ -79,6 +93,19 @@ export const state = {
   // hora por live, no seletor de cada card (ver upsertStreamCard).
   defaultWatchQuality: localStorage.getItem(DEFAULT_WATCH_QUALITY_KEY) || 'auto',
 
+  // Continuar vendo a tela numa janelinha flutuante do SO quando o app é
+  // minimizado ou escondido pra bandeja (ver js/auto-pip.js). Ligado por
+  // padrão — é o motivo de o app ir pra bandeja em vez de fechar.
+  autoPip: localStorage.getItem(AUTO_PIP_KEY) !== 'false',
+
+  // Qualidade que cada espectador pediu da MINHA tela — { viewerId: altura|null }.
+  // Precisa ficar guardado porque applyViewerQuality calcula o
+  // scaleResolutionDownBy a partir da altura NATIVA da captura atual; ao
+  // trocar de tela sem parar a transmissão (ver switchSource em
+  // webrtc/capture.js) essa base muda, e sem reaplicar os pedidos guardados
+  // aqui todo mundo que tinha escolhido 360p/480p voltava pra resolução cheia.
+  viewerQuality: {},
+
   // Stream em foco na tela (as demais ficam minimizadas embaixo)
   focusedId: null,
 
@@ -103,6 +130,31 @@ export const state = {
   screenSnapshots: {},
   snapshotInterval: null,
 
+  /* ── CÂMERA (WEBCAM) ──
+     Mais DOIS mapas separados, pelo mesmo motivo de watchPeers/sharePeers:
+     "eu mando minha câmera pra ele" e "eu recebo a câmera dele" são
+     conexões independentes e podem estar ativas ao mesmo tempo. Unificar
+     traria de volta a colisão de sinalização (glare) descrita acima.
+
+     A diferença pro compartilhamento de tela é QUEM OFERTA. Na tela, quem
+     oferta é quem quer assistir (ninguém recebe stream sem clicar). Câmera
+     é auto-inscrita — ligou, todo mundo vê —, então quem oferta é quem
+     LIGA a câmera, pra cada participante. Só essa ponta tem mídia nova,
+     então não há duas ofertas simultâneas entre o mesmo par. */
+  // camPeers:     { userId: RTCPeerConnection } — eu ENVIO minha câmera (offerer)
+  camPeers: {},
+  // camViewPeers: { userId: RTCPeerConnection } — eu RECEBO a câmera dele (answerer)
+  camViewPeers: {},
+  // Câmeras recebidas: { userId: MediaStream }
+  camStreams: {},
+
+  localCamStream: null,
+  cameraOn: false,
+  camDeviceId: localStorage.getItem(CAM_DEVICE_KEY) || '',
+  // Câmera promovida ao palco (aparece como card grande em vez de só o
+  // tile da faixa) — null = todas na faixa.
+  stagedCamId: null,
+
   // ── CHAT DE VOZ ──
   // Uma RTCPeerConnection bidirecional por participante (mic vai e vem na
   // mesma conexão — diferente do compartilhamento de tela, que é sempre
@@ -124,6 +176,9 @@ export const state = {
   // salvo de uma versão anterior deste slider).
   masterVolume: Math.min(100, Number(localStorage.getItem(MASTER_VOLUME_KEY) ?? 100)),
   noiseSuppression: localStorage.getItem(NOISE_SUPPRESSION_KEY) !== 'false',
+  // 40% era o volume fixo do antigo shareSound — vira só o padrão agora.
+  soundsEnabled: localStorage.getItem(SOUNDS_ENABLED_KEY) !== 'false',
+  soundsVolume: Number(localStorage.getItem(SOUNDS_VOLUME_KEY) ?? 40),
   noiseIntensity: Number(localStorage.getItem(NOISE_INTENSITY_KEY) ?? 85),
   // Volume individual que EU escolhi pra ouvir cada participante (local,
   // não afeta o que os outros ouvem) — 0-100, 100 é o padrão.

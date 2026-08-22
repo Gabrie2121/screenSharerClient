@@ -1,7 +1,10 @@
 import { $ } from './dom.js'
 
 /* ═══════════════════════════════════════════════════════════════
-   TOASTS + AVISO SONORO
+   TOASTS
+   Os avisos sonoros que moravam aqui viraram um registro por nome em
+   core/sounds.js (som ao começar E ao parar, ao entrar/sair gente, com
+   liga/desliga e volume nas configurações).
 ═══════════════════════════════════════════════════════════════ */
 function showError(msg) {
   const el = $('login-error')
@@ -34,28 +37,4 @@ function toastTop(msg) {
   toastTopTimer = setTimeout(() => t.classList.remove('show'), 3000)
 }
 
-// Aviso sonoro quando alguém começa a compartilhar — src/assets/holy.mp3
-// (caminho relativo a este arquivo, src/renderer/js/core/toast.js). Fica em
-// 40% do volume o tempo todo e corta em 1s — o arquivo original dura mais
-// que isso, mas só precisamos do começo como aviso rápido.
-const shareSound = new Audio('../../../assets/holy.mp3')
-shareSound.volume = 0.4
-let shareSoundCutTimer = null
-
-function playShareSound() {
-  try {
-    shareSound.currentTime = 0
-    shareSound.play().catch((err) => {
-      console.warn('[SOM] Falha ao tocar aviso de compartilhamento:', err)
-    })
-    clearTimeout(shareSoundCutTimer)
-    shareSoundCutTimer = setTimeout(() => {
-      shareSound.pause()
-      shareSound.currentTime = 0
-    }, 1000)
-  } catch (err) {
-    console.warn('[SOM] Falha ao tocar aviso de compartilhamento:', err)
-  }
-}
-
-export { showError, hideError, toast, toastTop, playShareSound }
+export { showError, hideError, toast, toastTop }

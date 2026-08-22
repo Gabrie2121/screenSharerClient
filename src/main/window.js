@@ -76,7 +76,44 @@ function createWindow() {
     win.hide()
   })
 
+  attachAutoPip(win)
+
   return win
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   PICTURE-IN-PICTURE AUTOMÁTICO
+   Some com a janela (minimizar, ou o X que esconde pra bandeja) e a tela
+   que você estava assistindo continua numa janelinha flutuante do SO. Ao
+   voltar, o PiP fecha sozinho e o vídeo volta pro card.
+
+   Por que passa por executeJavaScript e não por um ipc comum: o Chromium
+   exige *transient user activation* pra permitir requestPictureInPicture().
+   Minimizar pela barra de tarefas ou pelo Win+D é um gesto no SO, não no
+   renderer — um ipcRenderer.on() rodaria sem activation nenhuma e o pedido
+   seria rejeitado com NotAllowedError. O segundo argumento `true` do
+   executeJavaScript simula esse gesto, que é o único caminho daqui.
+
+   (Os botões de minimizar/fechar do titlebar custom também disparam o PiP
+   direto do próprio handler de clique — ali o gesto é legítimo. As duas
+   pontas são idempotentes, ver js/auto-pip.js.)
+═══════════════════════════════════════════════════════════════ */
+function runInRenderer(win, code) {
+  if (!win || win.isDestroyed() || win.webContents.isDestroyed()) return
+  // userGesture = true — ver o bloco acima.
+  win.webContents.executeJavaScript(code, true).catch((err) => {
+    log('WARN', `Falha ao acionar PiP automático: ${err.message}`)
+  })
+}
+
+function attachAutoPip(win) {
+  const enter = () => runInRenderer(win, 'window.__sharesyncAutoPip?.()')
+  const exit  = () => runInRenderer(win, 'window.__sharesyncExitPip?.()')
+
+  win.on('minimize', enter)
+  win.on('hide', enter)      // o X indo pra bandeja passa por aqui
+  win.on('restore', exit)
+  win.on('show', exit)
 }
 
 ipcMain.on('window-minimize', (e) => BrowserWindow.fromWebContents(e.sender)?.minimize())

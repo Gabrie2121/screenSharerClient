@@ -1,5 +1,9 @@
 /* ═══════════════════════════════════════════
-   AUTOVISUALIZAÇÃO (canto inferior direito, opcional)
+   AUTOVISUALIZAÇÃO — sua própria tela, opcional.
+   Começa no canto inferior direito (right/bottom), mas assim que a pessoa
+   arrasta, o JS troca pra left/top em estilo inline e zera estes dois
+   (ver applyPlacement em js/self-preview.js) — posicionar pelos quatro
+   lados ao mesmo tempo esticaria a caixa em vez de movê-la.
 ═══════════════════════════════════════════ */
 .self-preview {
   position: fixed;
@@ -13,11 +17,108 @@
   border-radius: var(--radius);
   overflow: hidden;
   box-shadow: 0 8px 24px rgba(0,0,0,.4);
+  cursor: grab;
+  user-select: none;
+}
+.self-preview.dragging {
+  cursor: grabbing;
+  /* Sem sombra "viva" durante o arraste a caixinha parece grudar no fundo. */
+  box-shadow: 0 14px 36px rgba(0,0,0,.6);
+  border-color: var(--accent, #4c8bf5);
 }
 .self-preview video {
   width: 100%;
   height: 100%;
   object-fit: contain;
   display: block;
+  /* O vídeo não pode capturar o ponteiro, senão o arraste morre no
+     primeiro pixel — quem escuta pointerdown é o wrapper. */
+  pointer-events: none;
 }
 
+/* ── Barra de ações — só no hover, pra não tampar a prévia ── */
+.self-preview-bar {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 5px 6px 5px 9px;
+  background: linear-gradient(to bottom, rgba(0,0,0,.75), transparent);
+  opacity: 0;
+  transition: opacity .15s;
+}
+.self-preview:hover .self-preview-bar,
+.self-preview.is-fullscreen .self-preview-bar { opacity: 1; }
+
+.self-preview-title {
+  font-size: 11px;
+  color: #dfe3ea;
+  text-shadow: 0 1px 2px rgba(0,0,0,.8);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.self-preview-actions { display: flex; gap: 4px; }
+
+.sp-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: none;
+  border-radius: 5px;
+  background: rgba(0,0,0,.5);
+  color: #dfe3ea;
+  font-size: 12px;
+  line-height: 1;
+  cursor: pointer;
+}
+.sp-btn:hover { background: rgba(255,255,255,.2); }
+.sp-btn.active { background: var(--accent, #4c8bf5); color: #fff; }
+.sp-btn.hidden { display: none; }
+.sp-btn svg { width: 13px; height: 13px; }
+
+/* ── Alça de redimensionar ──
+   Fica no canto SUPERIOR ESQUERDO: o inferior direito é justamente pra
+   onde a caixinha vai por padrão, encostada nas bordas da janela. */
+.self-preview-resize {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 16px;
+  height: 16px;
+  cursor: nwse-resize;
+  background:
+    linear-gradient(135deg, rgba(255,255,255,.55) 0 2px, transparent 2px 5px,
+                    rgba(255,255,255,.55) 5px 7px, transparent 7px);
+  opacity: 0;
+  transition: opacity .15s;
+}
+.self-preview:hover .self-preview-resize { opacity: 1; }
+
+/* ── Tela cheia ──
+   !important porque posição e largura vivem em estilo inline (arraste e
+   resize) e inline ganha de regra normal: sem isso, entrar em tela cheia
+   deixaria a caixinha de 220px num canto e o resto da tela preto. */
+.self-preview:fullscreen {
+  width: 100% !important;
+  height: 100% !important;
+  left: 0 !important;
+  top: 0 !important;
+  right: auto !important;
+  bottom: auto !important;
+  aspect-ratio: auto !important;
+  border: none;
+  border-radius: 0;
+  box-shadow: none;
+  cursor: default;
+}
+.self-preview:fullscreen video { object-fit: contain; }
+/* Redimensionar não faz sentido ocupando a tela toda. */
+.self-preview:fullscreen .self-preview-resize { display: none; }

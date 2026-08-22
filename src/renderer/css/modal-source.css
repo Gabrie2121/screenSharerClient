@@ -93,8 +93,35 @@
   padding: 14px 16px;
   border-top: 1px solid var(--border);
   flex-shrink: 0;
+  /* Vira duas colunas quando o "Parar de transmitir" aparece (só durante uma
+     transmissão, ver updateModalMode em js/webrtc/capture.js). Com o botão
+     escondido o flex sozinho já devolve a largura toda pro principal. */
+  display: flex;
+  gap: 10px;
 }
-.modal-footer .btn-primary { width: 100%; }
+.modal-footer .btn-primary { flex: 1; }
+
+/* Parar de transmitir — só aparece quando já se está compartilhando, e é o
+   único caminho pra parar desde que o botão da sidebar passou a abrir o
+   seletor de fonte pra trocar de tela. */
+.btn-danger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 10px 16px;
+  border-radius: var(--radius);
+  border: 1px solid #7f2a2a;
+  background: #3a1a1a;
+  color: #ff9c9c;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background .15s, border-color .15s;
+}
+.btn-danger:hover { background: #521f1f; border-color: #a13636; }
+.btn-danger.hidden { display: none; }
 .modal-footer .btn-primary:disabled {
   opacity: .5;
   cursor: default;

@@ -142,15 +142,76 @@ function createPeer(remoteId, role) {
     }
   }
 
-  // Se é a conexão em que eu COMPARTILHO (sharer), adiciona tracks agora
-  if (role === 'sharer' && state.sharing && state.localStream) {
-    state.localStream.getTracks().forEach(track => {
-      console.log('[ADD TRACK]', track.kind)
-      pc.addTrack(track, state.localStream)
-    })
+  // Obs.: a conexão de sharer NÃO recebe addTrack aqui. As tracks entram em
+  // applySharedStreamToPeer, depois do setRemoteDescription (ver handleOffer)
+  // — é o que garante um sender de áudio mesmo quando a captura atual não tem
+  // áudio, e é isso que permite trocar de tela depois sem renegociar.
+  return pc
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   FORMA FIXA DA CONEXÃO DE QUEM COMPARTILHA
+   Toda conexão de sharer nasce com um sender de vídeo E um de áudio, mesmo
+   quando a captura escolhida é "Sem som" — nesse caso o sender de áudio fica
+   com track nula.
+
+   Por que: trocar de tela em transmissão (switchSource em capture.js) é feito
+   com sender.replaceTrack(), que não exige renegociação. Só que replaceTrack
+   precisa de um sender JÁ existente daquele kind; se a captura antiga não
+   tinha áudio e a nova tem, não haveria sender de áudio pra substituir, e
+   criar um exigiria uma renegociação que este protocolo não tem — quem
+   compartilha é o answerer, não tem como ofertar (ver o contrato em
+   CLAUDE.md: quem inicia a oferta de tela é sempre quem assiste).
+
+   Isso funciona porque quem assiste sempre oferta com offerToReceiveAudio:
+   true (ver startPeerConnection), então a m-line de áudio existe na offer e
+   vira um transceiver aqui do lado. Só falta virá-lo pra 'sendonly' ANTES do
+   createAnswer — os transceivers criados pelo setRemoteDescription nascem
+   'recvonly', e uma answer recvonly contra uma offer recvonly negocia a
+   m-line como inativa: o replaceTrack posterior não faria som nenhum sair.
+
+   Reaproveitada na troca de tela: pôr a mesma direction que já está valendo
+   é no-op e não dispara negotiationneeded, então dá pra chamar de novo com
+   a conexão já estabelecida.
+═══════════════════════════════════════════════════════════════ */
+export async function applySharedStreamToPeer(pc, stream) {
+  const wanted = {
+    video: stream?.getVideoTracks()[0] || null,
+    audio: stream?.getAudioTracks()[0] || null,
   }
 
-  return pc
+  for (const kind of ['video', 'audio']) {
+    // O kind do transceiver vem do receiver: o sender pode estar sem track
+    // nenhuma (justamente o caso do áudio numa captura "Sem som").
+    const tr = pc.getTransceivers().find(t => t.receiver?.track?.kind === kind)
+    if (!tr) {
+      // Só aconteceria contra um cliente antigo que ofertasse sem a m-line
+      // de áudio. Não dá pra addTransceiver aqui (criaria uma m-line que a
+      // offer não tem, e a answer não poderia incluí-la) — segue sem esse kind.
+      if (wanted[kind]) console.warn(`[SHARE] Sem transceiver de ${kind} nesta conexão`)
+      continue
+    }
+
+    tr.direction = 'sendonly'
+    try {
+      await tr.sender.replaceTrack(wanted[kind])
+    } catch (err) {
+      console.warn(`[SHARE] Falha ao aplicar track de ${kind}:`, err)
+    }
+  }
+}
+
+// Troca a tela transmitida em TODAS as conexões de quem me assiste, sem
+// derrubar nenhuma delas (ver switchSource em capture.js). Como é só
+// replaceTrack, quem assiste nem percebe a renegociação — a imagem troca no
+// lugar, sem precisar clicar em "Assistir" de novo.
+export async function replaceSharedStream(stream) {
+  await Promise.all(
+    Object.values(state.sharePeers).map(pc => applySharedStreamToPeer(pc, stream))
+  )
+  // A altura nativa mudou, então o scaleResolutionDownBy de cada espectador
+  // foi calculado contra uma base que não vale mais.
+  await reapplyAllViewerQuality()
 }
 
 // Recebe offer (alguém quer assistir minha tela) — eu respondo como sharer
@@ -162,10 +223,14 @@ export async function handleOffer(fromId, offer) {
     return
   }
 
-  // Cria peer JÁ com os tracks antes de responder
   const pc = createPeer(fromId, 'sharer')
 
   await pc.setRemoteDescription(new RTCSessionDescription(offer))
+
+  // Só agora dá pra montar os senders: os transceivers desta conexão só
+  // existem depois que a offer de quem assiste foi aplicada (ver
+  // applySharedStreamToPeer pro porquê de ser aqui e não no createPeer).
+  await applySharedStreamToPeer(pc, state.localStream)
 
   const answer = await pc.createAnswer()
   await pc.setLocalDescription(answer)
@@ -211,6 +276,11 @@ export async function handleIceCandidate(fromId, payload) {
 const QUALITY_BITRATE_KBPS = { 360: 600, 480: 1000, 720: 2500, 1080: 4000 }
 
 export async function applyViewerQuality(viewerId, requestedHeight) {
+  // Guarda o pedido ANTES de qualquer early return: ao trocar de tela em
+  // transmissão a altura nativa muda e todos os pedidos precisam ser
+  // recalculados contra a nova base (ver reapplyAllViewerQuality).
+  state.viewerQuality[viewerId] = requestedHeight || null
+
   const pc = state.sharePeers[viewerId]
   if (!pc) return
   const sender = pc.getSenders().find(s => s.track && s.track.kind === 'video')
@@ -244,7 +314,18 @@ export function closeWatchPeer(uid) {
   delete state.remoteStreams[uid]
 }
 
+// Reaplica o que cada espectador já tinha pedido, recalculado contra a
+// altura nativa da captura atual (ver replaceSharedStream).
+export async function reapplyAllViewerQuality() {
+  await Promise.all(
+    Object.keys(state.sharePeers).map(uid =>
+      applyViewerQuality(uid, state.viewerQuality[uid] || null)
+    )
+  )
+}
+
 export function closeSharePeer(uid) {
   state.sharePeers[uid]?.close()
   delete state.sharePeers[uid]
+  delete state.viewerQuality[uid]
 }

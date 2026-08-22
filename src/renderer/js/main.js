@@ -40,6 +40,18 @@ import './snapshot.js'
 import './webrtc/screen-share-peers.js'
 import './webrtc/capture.js'
 
+// Autovisualização (arrastar/redimensionar/tela cheia/PiP) e o PiP
+// automático ao minimizar — o auto-pip depende do self-preview pra poder
+// cair na própria tela quando não se está assistindo ninguém.
+import './self-preview.js'
+import './auto-pip.js'
+
+// Câmera (webcam) — mapas de peers próprios, ver o cabeçalho de
+// webrtc/camera.js pra QUEM oferta e por que não dá pra reusar os mapas
+// de tela ou de voz.
+import './camera-strip.js'
+import './webrtc/camera.js'
+
 // Chat de voz
 import './voice/audio-context.js'
 import './voice/noise-suppression.js'

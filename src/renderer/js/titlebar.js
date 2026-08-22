@@ -1,13 +1,27 @@
 import { $ } from './core/dom.js'
 import { appLog } from './core/logger.js'
 import { toast } from './core/toast.js'
+import { enterAutoPip } from './auto-pip.js'
 
 /* ═══════════════════════════════════════════════════════════════
    TITLEBAR
+   Minimizar e fechar (que esconde pra bandeja, ver window.on('close') em
+   src/main/window.js) pedem o Picture-in-Picture ANTES de mandar o IPC:
+   requestPictureInPicture() exige um gesto do usuário no renderer, e este
+   handler de clique é exatamente isso. O processo principal também dispara
+   o PiP pelos eventos da janela — pra cobrir minimizar pela barra de
+   tarefas —, mas ali o gesto precisa ser simulado, o que é menos garantido.
+   As duas pontas são idempotentes (ver js/auto-pip.js).
 ═══════════════════════════════════════════════════════════════ */
-$('btn-min').onclick   = () => window.electronAPI?.minimize()
-$('btn-max').onclick   = () => window.electronAPI?.maximize()
-$('btn-close').onclick = () => window.electronAPI?.close()
+$('btn-min').onclick = () => {
+  enterAutoPip()
+  window.electronAPI?.minimize()
+}
+$('btn-max').onclick = () => window.electronAPI?.maximize()
+$('btn-close').onclick = () => {
+  enterAutoPip()
+  window.electronAPI?.close()
+}
 
 /* ═══════════════════════════════════════════════════════════════
    VERSÃO DO APP — canto inferior esquerdo, em toda a tela do sistema.

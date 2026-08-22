@@ -11,11 +11,53 @@ require('./main/ipc.js')
    (logger, updater, window, tray, ipc — cada um documentado no próprio
    arquivo). Ver src/renderer/js/main.js pro equivalente do lado do renderer.
 ═══════════════════════════════════════════════════════════════ */
-app.whenReady().then(() => {
-  log('INFO', '🚀 App iniciado')
-  createWindow()
-  createTray()
-})
+
+// Agrupa o app na barra de tarefas do Windows sob a MESMA identidade do
+// instalador (build.appId no package.json). Sem isso, o atalho fixado e a
+// janela em execução podem ser tratados como coisas diferentes, e clicar no
+// atalho tende a lançar um processo novo em vez de trazer o que já roda.
+if (process.platform === 'win32') app.setAppUserModelId('com.sharesync.app')
+
+/* ═══════════════════════════════════════════════════════════════
+   INSTÂNCIA ÚNICA
+   Fechar no X esconde o app na bandeja (ver window.on('close') em
+   src/main/window.js) — o processo continua vivo, só invisível. Sem o lock
+   abaixo, abrir o executável de novo nesse estado subia um segundo processo
+   Electron inteiro: duas bandejas, duas janelas, dois WebSockets na mesma
+   sala. A pessoa via "um app novo" em vez do que já estava aberto.
+
+   Agora a segunda instância não cria janela nenhuma: ela avisa a primeira
+   (evento 'second-instance') e morre. Quem já estava rodando reaparece.
+═══════════════════════════════════════════════════════════════ */
+const gotTheLock = app.requestSingleInstanceLock()
+
+if (!gotTheLock) {
+  // app.exit() em vez de app.quit(): quit dispara 'before-quit', que chama
+  // setQuitting(true). Aqui isso é inofensivo (é outro processo), mas exit
+  // encerra na hora, sem rodar o ciclo de encerramento de um app que nunca
+  // chegou a abrir janela.
+  app.exit(0)
+} else {
+  app.on('second-instance', () => {
+    log('INFO', '🔁 Segunda instância bloqueada — trazendo a janela existente')
+    const win = getMainWindow()
+    // Se a janela já foi destruída mas o processo segue vivo (só a bandeja),
+    // recria em vez de não fazer nada.
+    if (!win || win.isDestroyed()) {
+      createWindow()
+      return
+    }
+    if (win.isMinimized()) win.restore()
+    win.show()
+    win.focus()
+  })
+
+  app.whenReady().then(() => {
+    log('INFO', '🚀 App iniciado')
+    createWindow()
+    createTray()
+  })
+}
 
 // Fecha a janela (X) só esconde pra bandeja agora (ver window.on('close')
 // em src/main/window.js) — window-all-closed só dispara mesmo num "Sair" de verdade.

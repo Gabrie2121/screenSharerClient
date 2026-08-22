@@ -232,8 +232,11 @@
    lados, por isso os dois viraram ícone puro, com o rótulo no title). */
 .share-row {
   display: grid;
-  grid-template-columns: 1fr 1fr 1fr;
-  gap: 8px;
+  /* Quatro colunas desde que a câmera entrou (mic / câmera / tela /
+     configurações). Gap menor que os 8px de antes pra não espremer os
+     ícones numa sidebar estreita. */
+  grid-template-columns: repeat(4, 1fr);
+  gap: 6px;
 }
 /* Altura fixa nos 3 (não só padding igual) — com padding igual mas
    font-size diferente (ícone grande vs texto pequeno), o conteúdo em si
@@ -261,6 +264,39 @@
   border-color: rgba(224,92,92,.3);
   color: var(--red);
 }
+/* Ligar/desligar câmera — mesmo tratamento visual dos outros botões da
+   linha: azul quando disponível, verde quando a câmera está no ar (verde,
+   e não vermelho como o de compartilhar, porque câmera ligada é um estado
+   "positivo" contínuo, não um alerta de que se está transmitindo a tela). */
+.btn-camera {
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(79,142,247,.12);
+  border: 1px solid rgba(79,142,247,.3);
+  color: var(--accent);
+  border-radius: var(--radius-sm);
+  padding: 0 8px;
+  font-size: 18px;
+  cursor: pointer;
+  transition: background .15s, border-color .15s;
+}
+.btn-camera:hover { background: rgba(79,142,247,.2); }
+
+/* Selinho de "câmera ligada" na lista de participantes — só informativo,
+   diferente do indicador de volume, que é clicável. */
+.participant-cam-indicator {
+  font-size: 12px;
+  opacity: .85;
+  flex-shrink: 0;
+  pointer-events: none;
+}
+.btn-camera.active {
+  background: rgba(74,190,124,.14);
+  border-color: rgba(74,190,124,.35);
+}
+
 /* Mutar/desmutar microfone — mesmo tratamento visual do botão de
    compartilhar (azul = ativo, vermelho = "desligado"/mutado). */
 .btn-mic {

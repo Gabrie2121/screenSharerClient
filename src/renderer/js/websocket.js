@@ -1,6 +1,7 @@
 import { $, showScreen } from './core/dom.js'
 import { appLog } from './core/logger.js'
-import { toast, toastTop, showError, playShareSound } from './core/toast.js'
+import { toast, toastTop, showError } from './core/toast.js'
+import { playSound } from './core/sounds.js'
 import { state } from './core/state.js'
 import { setLoginButtonsDisabled } from './login.js'
 import { startPing, stopPing, handlePong } from './ping.js'
@@ -14,6 +15,11 @@ import {
 import {
   initVoiceChat, handleVoiceOffer, handleVoiceAnswer, handleVoiceIceCandidate,
 } from './voice/peers.js'
+import {
+  handleCamOffer, handleCamAnswer, handleCamIceCandidate,
+  offerCameraTo, cleanupCameraForUser, playCameraSound, reannounceCamera,
+} from './webrtc/camera.js'
+import { renderCameraStrip } from './camera-strip.js'
 import { clearRemoteVoiceAnalysers } from './voice/speaking-detection.js'
 
 /* ═══════════════════════════════════════════════════════════════
@@ -99,9 +105,20 @@ export function connectWebSocket() {
     Object.values(state.watchPeers).forEach(pc => pc.close())
     Object.values(state.sharePeers).forEach(pc => pc.close())
     Object.values(state.voicePeers).forEach(pc => pc.close())
+    Object.values(state.camPeers).forEach(pc => pc.close())
+    Object.values(state.camViewPeers).forEach(pc => pc.close())
     state.watchPeers = {}
     state.sharePeers = {}
     state.voicePeers = {}
+    // A captura da própria câmera continua viva (state.localCamStream) —
+    // como o microfone, não faz sentido pedir permissão de novo a cada
+    // reconexão. Só as conexões com cada participante caem; elas são
+    // refeitas quando eu reofertar depois do 'room-info'.
+    state.camPeers = {}
+    state.camViewPeers = {}
+    state.camStreams = {}
+    state.stagedCamId = null
+    renderCameraStrip()
     // O microfone continua capturado (não precisa pedir permissão de novo
     // ao reconectar) — só as conexões de voz com cada participante caem,
     // e são refeitas quando a sala reenviar 'room-info' (ver initVoiceChat).
@@ -148,6 +165,12 @@ async function handleMessage(msg) {
         if (uid !== state.myId) {
           state.users[uid] = u
           seedParticipantVolume(uid, u.username)
+          // Quem já estava com a câmera ligada vai ofertar pra mim sozinho?
+          // Não: quem oferta é quem LIGA a câmera (ver js/webrtc/camera.js),
+          // e isso já aconteceu antes de eu entrar. Quem me manda a oferta é
+          // aquela ponta, ao receber o meu 'user-joined'. O campo `camera`
+          // que vem aqui serve pra UI já mostrar o ícone certo enquanto a
+          // negociação não termina.
         }
       }
       renderParticipants()
@@ -155,21 +178,36 @@ async function handleMessage(msg) {
       // estavam na sala (ver initVoiceChat) — evita duas ofertas
       // simultâneas (glare) entre o mesmo par de usuários.
       initVoiceChat()
+      // Câmera: se ela já estava ligada, este room-info é uma RECONEXÃO. O
+      // user_id é gerado por conexão (ver CLAUDE.md), então o servidor
+      // perdeu o estado `camera` do meu usuário antigo e as conexões de
+      // câmera foram todas fechadas no onclose — preciso me anunciar e
+      // reofertar, senão eu ficaria "com a câmera ligada" só pra mim.
+      reannounceCamera()
       break
 
     // Novo usuário entrou
     case 'user-joined':
       if (msg.user_id !== state.myId) {
-        state.users[msg.user_id] = { username: msg.username, sharing: false }
+        state.users[msg.user_id] = { username: msg.username, sharing: false, camera: false }
         seedParticipantVolume(msg.user_id, msg.username)
         renderParticipants()
         toast(`${msg.username} entrou na sala`)
+        playSound('user-join')
+        // Minha câmera já está ligada e essa pessoa não existia quando eu
+        // liguei — sem esta oferta, quem entra depois nunca veria a câmera
+        // de quem já estava (quem oferta é sempre quem tem a câmera).
+        offerCameraTo(msg.user_id)
       }
       break
 
     // Usuário saiu
     case 'user-left':
       toast(`${msg.username || 'Alguém'} saiu da sala`)
+      playSound('user-leave')
+      // Saiu de vez: derruba os dois sentidos da câmera (o que eu recebia
+      // dela E o que eu enviava pra ela).
+      cleanupCameraForUser(msg.user_id, true)
       removeUser(msg.user_id)
       break
 
@@ -181,7 +219,7 @@ async function handleMessage(msg) {
         // Toast de cima (borda verde) — separado do toast de baixo, que
         // fica só pra entrada/saída de gente na sala e outros avisos.
         toastTop(`${msg.username} está compartilhando a tela`)
-        playShareSound()
+        playSound('share-start')
       }
       break
 
@@ -195,9 +233,30 @@ async function handleMessage(msg) {
         delete state.screenSnapshots[msg.user_id] // não mostra prévia de uma live que já acabou
         renderParticipants()
         removeStreamCard(msg.user_id)
+        playSound('share-stop')
         // Só fecha a conexão em que EU assistia essa pessoa — se ela
         // também estiver me assistindo, essa outra conexão continua de pé.
         closeWatchPeer(msg.user_id)
+      }
+      break
+
+    // Alguém ligou a câmera — a oferta WebRTC dessa pessoa vem logo atrás
+    // (ver offerCameraTo). Aqui é só o estado pra UI.
+    case 'user-camera-on':
+      if (state.users[msg.user_id]) {
+        state.users[msg.user_id].camera = true
+        renderParticipants()
+        playCameraSound()
+      }
+      break
+
+    // Alguém desligou a câmera — fecha só o sentido em que eu RECEBIA. A
+    // conexão em que eu envio a MINHA câmera pra essa pessoa continua de pé.
+    case 'user-camera-off':
+      if (state.users[msg.user_id]) {
+        state.users[msg.user_id].camera = false
+        cleanupCameraForUser(msg.user_id)
+        renderParticipants()
       }
       break
 
@@ -215,16 +274,19 @@ async function handleMessage(msg) {
     // tipos de negociação (tela e voz) com a MESMA pessoa se confundiriam.
     case 'offer':
       if (msg.payload?.kind === 'voice') await handleVoiceOffer(msg.from, msg.payload)
+      else if (msg.payload?.kind === 'webcam') await handleCamOffer(msg.from, msg.payload)
       else await handleOffer(msg.from, msg.payload)
       break
 
     case 'answer':
       if (msg.payload?.kind === 'voice') await handleVoiceAnswer(msg.from, msg.payload)
+      else if (msg.payload?.kind === 'webcam') await handleCamAnswer(msg.from, msg.payload)
       else await handleAnswer(msg.from, msg.payload)
       break
 
     case 'ice-candidate':
       if (msg.payload?.kind === 'voice') await handleVoiceIceCandidate(msg.from, msg.payload)
+      else if (msg.payload?.kind === 'webcam') await handleCamIceCandidate(msg.from, msg.payload)
       else await handleIceCandidate(msg.from, msg.payload)
       break
 
