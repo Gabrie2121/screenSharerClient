@@ -1,0 +1,158 @@
+/* ═══════════════════════════════════════════
+   MODAL DE CONFIGURAÇÕES
+═══════════════════════════════════════════ */
+.modal-settings {
+  width: min(760px, calc(100vw - 48px));
+  max-height: min(760px, calc(100vh - 72px));
+}
+.settings-tabs {
+  display: flex;
+  gap: 4px;
+  padding: 10px 20px 0;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg2);
+}
+.settings-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 132px;
+  justify-content: center;
+  padding: 11px 16px 12px;
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: var(--text2);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: color .15s, border-color .15s, background .15s;
+}
+.settings-tab:hover { color: var(--text); background: var(--bg3); }
+.settings-tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+.settings-tab-icon { font-size: 15px; line-height: 1; }
+.settings-body {
+  padding: 8px 28px 24px;
+  overflow-y: auto;
+}
+.settings-panel { display: none; animation: settings-panel-in .18s ease-out; }
+.settings-panel.active { display: block; }
+@keyframes settings-panel-in {
+  from { opacity: 0; transform: translateY(3px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.settings-section-title {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: .05em;
+  color: var(--text3);
+  padding: 14px 0 8px;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 4px;
+}
+.settings-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 12px 0;
+  cursor: default;
+}
+.settings-row + .settings-row { border-top: 1px solid var(--border); }
+.settings-row-text { display: flex; flex-direction: column; gap: 3px; }
+.settings-row-label { font-size: 13px; color: var(--text); font-weight: 500; }
+.settings-row-hint { font-size: 11px; color: var(--text3); line-height: 1.4; }
+.settings-row-text { flex: 1; min-width: 0; }
+.settings-row > .quality-select-inline { width: 220px; flex-shrink: 0; }
+
+/* Linha que empilha texto + controle (em vez de lado a lado) — usada pelo
+   teste de microfone, que também tem o meter embaixo do botão. */
+.settings-row-column { flex-direction: column; align-items: stretch; gap: 10px; }
+
+.noise-intensity-control { display: flex; align-items: center; gap: 12px; width: 100%; }
+.noise-intensity-control input { flex: 1; accent-color: var(--accent); cursor: pointer; }
+.noise-intensity-control output {
+  min-width: 42px;
+  color: var(--accent);
+  font-family: var(--mono);
+  font-size: 12px;
+  text-align: right;
+}
+
+@media (max-width: 640px) {
+  .modal-settings { width: calc(100vw - 24px); max-height: calc(100vh - 52px); }
+  .settings-tabs { padding-left: 12px; padding-right: 12px; }
+  .settings-tab { flex: 1; min-width: 0; }
+  .settings-body { padding-left: 16px; padding-right: 16px; }
+  .settings-row { align-items: flex-start; }
+  .settings-row > .quality-select-inline { width: 150px; }
+}
+
+/* Nível do microfone durante o teste (ver runMicTestMeter em js/voice/device-settings.js) */
+.mic-test-meter {
+  height: 6px;
+  background: var(--bg3);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  overflow: hidden;
+}
+.mic-test-meter-fill {
+  height: 100%;
+  width: 0%;
+  background: var(--green);
+  transition: width .1s linear;
+}
+
+/* Toggle liga/desliga */
+.toggle-switch {
+  position: relative;
+  display: inline-block;
+  width: 38px;
+  height: 22px;
+  flex-shrink: 0;
+  cursor: pointer;
+}
+.toggle-switch input { position: absolute; opacity: 0; width: 0; height: 0; }
+.toggle-slider {
+  position: absolute;
+  inset: 0;
+  background: var(--bg3);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  transition: background .15s, border-color .15s;
+}
+.toggle-slider::before {
+  content: '';
+  position: absolute;
+  width: 16px;
+  height: 16px;
+  left: 2px;
+  top: 2px;
+  background: var(--text3);
+  border-radius: 50%;
+  transition: transform .15s, background .15s;
+}
+.toggle-switch input:checked + .toggle-slider {
+  background: rgba(79,142,247,.25);
+  border-color: var(--accent);
+}
+.toggle-switch input:checked + .toggle-slider::before {
+  transform: translateX(16px);
+  background: var(--accent);
+}
+
+.quality-select-inline {
+  background: var(--bg3);
+  border: 1px solid var(--border);
+  color: var(--text2);
+  border-radius: var(--radius-sm);
+  padding: 6px 8px;
+  font-size: 12px;
+  font-family: var(--font);
+  cursor: pointer;
+  flex-shrink: 0;
+}
+.quality-select-inline:hover { border-color: var(--accent); color: var(--accent); }
+

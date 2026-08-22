@@ -1,0 +1,283 @@
+.stream-card {
+  width: 100%;
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  max-height: calc(100vh - 80px);
+  cursor: pointer;
+  transition: border-color .15s;
+}
+/* Padding ~20% menor que antes (era 8px/12px) — cabeçalho mais enxuto,
+   compensado por ícones/conteúdo maiores dentro dele (ver botões abaixo). */
+.stream-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 10px;
+  background: var(--bg3);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+  transition: opacity .25s;
+}
+/* Fora da tela cheia, o cabeçalho também some depois de 5s sem o mouse se
+   mexer (ver mousemove em js/stage-layout.js) — mesma ideia do fullscreen (3s), só que
+   com um tempo maior porque aqui não está tampando o vídeo, é só limpeza
+   visual quando ninguém está mexendo em nada. */
+.streams-grid.headers-hidden .stream-card:not(:fullscreen) .stream-header {
+  opacity: 0;
+  pointer-events: none;
+}
+/* min-width:0 + overflow/ellipsis: trunca o nome antes de espremer os
+   botões, num card estreito com nome comprido + 4 controles no cabeçalho */
+.stream-name {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text2);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.stream-name::before {
+  content: '';
+  display: inline-block;
+  flex-shrink: 0;
+  width: 7px; height: 7px;
+  border-radius: 50%;
+  background: var(--green);
+  box-shadow: 0 0 6px var(--green);
+}
+.stream-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+/* Resolução/bitrate reais recebidos (getStats, ver upsertStreamCard) —
+   prova ao vivo de que o seletor de qualidade está funcionando. */
+.stream-stats {
+  font-size: 10px;
+  font-family: var(--mono);
+  color: var(--green);
+  white-space: nowrap;
+}
+/* Picture-in-Picture (abre a stream numa janela flutuante do SO) e Tela
+   cheia — largura/altura FIXAS e iguais (antes cada emoji tinha uma largura
+   própria — o de volume, por exemplo, acabava maior que os outros só por
+   causa do glifo). Ícone ~20% maior que antes (15px→18px) dentro de uma
+   caixa um pouco menor, já que o cabeçalho ficou mais enxuto. */
+.pip-btn,
+.fullscreen-btn,
+.vol-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  color: #fff;
+  font-size: 18px;
+  line-height: 1;
+  padding: 0;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: all .15s;
+}
+.pip-btn svg { width: 18px; height: 18px; }
+.pip-btn:hover,
+.fullscreen-btn:hover,
+.vol-icon:hover { border-color: var(--accent); color: var(--accent); }
+.pip-btn:hover,
+.fullscreen-btn:hover { transform: scale(1.05); }
+.pip-btn.active { border-color: var(--accent); color: var(--accent); }
+.vol-icon.muted { opacity: .75; }
+.vol-icon:disabled { cursor: default; opacity: .4; }
+.vol-icon:disabled:hover { border-color: var(--border); color: #fff; }
+/* Largura livre (tem texto de tamanho variável — "Automática" etc.), mas
+   mesma altura dos botões de ícone ao lado. */
+.quality-select {
+  height: 32px;
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  color: #fff;
+  font-family: var(--font);
+  font-size: 13px;
+  padding: 0 8px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: all .15s;
+}
+.quality-select:hover { border-color: var(--accent); color: var(--accent); }
+
+/* Volume — passar o mouse já mostra o slider (sem precisar clicar);
+   clicar no ícone muta/desmuta direto (ver JS). A porcentagem some com o
+   slider; enquanto arrasta, vira um tooltip grudado no cursor (.vol-tooltip
+   mais abaixo), não um valor fixo dentro do popover. */
+.vol-control { position: relative; }
+.vol-popover {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 6;
+  width: 120px;
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 10px 12px;
+  box-shadow: 0 8px 24px rgba(0,0,0,.4);
+  cursor: default;
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(-4px);
+  transition: opacity .15s, transform .15s;
+}
+/* .open é controlado por JS (mouseenter/mouseleave com um pequeno atraso
+   pra sair) — só :hover puro não dava porque o popover é position:absolute
+   e geometricamente fica fora da caixa do ícone; mover o mouse até o
+   slider passava por um instante fora dos dois e fechava no meio do
+   caminho (ver vol-control em upsertStreamCard). */
+.vol-control.open .vol-popover {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateY(0);
+}
+.vol-popover .vol-slider { width: 100%; accent-color: var(--accent); cursor: pointer; }
+/* Tooltip da porcentagem — segue o cursor (posicionado via JS em cada
+   mousemove no slider), não fica fixo num canto do popover. */
+.vol-tooltip {
+  position: fixed;
+  z-index: 50;
+  transform: translate(-50%, -130%);
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 2px 6px;
+  font-size: 11px;
+  font-family: var(--mono);
+  color: var(--text);
+  pointer-events: none;
+  white-space: nowrap;
+}
+.vol-tooltip.hidden { display: none; }
+.stream-video-wrap {
+  position: relative;
+  /* Trava a proporção em 16:9 (padrão de tela cheia) — sem isso a altura da
+     caixa ficava ambígua (definida por `flex:1` num container sem altura
+     própria) e sobrava espaço vazio embaixo do vídeo por causa do
+     letterboxing do `object-fit:contain`. Travando a proporção, a caixa já
+     nasce do tamanho exato do vídeo, sem sobra. */
+  aspect-ratio: 16 / 9;
+  width: 100%;
+  display: flex;
+  min-height: 0;
+  /* Recorta o vídeo com zoom (scroll do mouse, ver JS) nos limites do card */
+  overflow: hidden;
+}
+/* No modo foco a altura é definida pelo layout (não pela proporção do
+   vídeo — a pessoa pode estar compartilhando algo fora de 16:9), então
+   volta ao comportamento antigo: preenche o espaço disponível e deixa o
+   `object-fit: contain` cuidar de eventuais barras. */
+.streams-grid.has-focus .stream-card .stream-video-wrap {
+  aspect-ratio: auto;
+  flex: 1;
+}
+.stream-video {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  background: #000;
+  display: block;
+  transition: transform .08s ease-out;
+}
+/* Zoom com scroll do mouse (ver wheel em upsertStreamCard) */
+.stream-video.zoomed { cursor: zoom-out; }
+
+/* Tela cheia de uma stream específica (ver JS — card.requestFullscreen()).
+   Cabeçalho e controles viram overlays flutuantes por cima do vídeo em vez
+   do layout normal em coluna, e o volume vira uma pílula compacta perto do
+   fundo em vez de uma barra cobrindo a largura inteira. */
+.stream-card:fullscreen {
+  width: 100vw;
+  height: 100vh;
+  max-height: 100vh;
+  border: none;
+  border-radius: 0;
+  background: #000;
+}
+.stream-card:fullscreen .stream-video-wrap {
+  aspect-ratio: auto;
+  flex: 1;
+}
+.stream-card:fullscreen .stream-header {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 2;
+  padding: 18px 24px;
+  background: linear-gradient(to bottom, rgba(0,0,0,.75), transparent);
+  border-bottom: none;
+  transition: opacity .25s;
+}
+.stream-card:fullscreen .stream-name { font-size: 16px; }
+.stream-card:fullscreen .stream-stats { font-size: 12px; }
+/* Botões/caixas maiores, com fundo/borda/sombra — em cima de vídeo, ícone
+   sozinho sem contraste quase não dava pra ver. Volume e qualidade agora
+   moraram pro cabeçalho junto com PiP/tela cheia (não tem mais barra
+   separada embaixo, então não corta mais nada). */
+.stream-card:fullscreen .pip-btn,
+.stream-card:fullscreen .fullscreen-btn,
+.stream-card:fullscreen .vol-icon {
+  width: 38px;
+  height: 38px;
+  font-size: 20px;
+  background: rgba(15,17,23,.7);
+  border: 1px solid rgba(255,255,255,.18);
+  box-shadow: 0 2px 10px rgba(0,0,0,.4);
+}
+.stream-card:fullscreen .pip-btn svg { width: 20px; height: 20px; }
+.stream-card:fullscreen .quality-select {
+  height: 38px;
+  font-size: 14px;
+  background: rgba(15,17,23,.7);
+  border: 1px solid rgba(255,255,255,.18);
+  box-shadow: 0 2px 10px rgba(0,0,0,.4);
+}
+.stream-card:fullscreen .pip-btn:hover,
+.stream-card:fullscreen .fullscreen-btn:hover,
+.stream-card:fullscreen .vol-icon:hover,
+.stream-card:fullscreen .quality-select:hover {
+  border-color: var(--accent);
+  transform: none;
+}
+/* Some depois de 3s sem o mouse se mexer (ver mousemove em js/stage-layout.js) */
+.stream-card:fullscreen.controls-hidden .stream-header {
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* Loading — enquanto a tela da pessoa ainda não carregou */
+.stream-loading {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  background: rgba(15, 17, 23, .85);
+  color: var(--text2);
+  font-size: 12px;
+}
+.stream-loading.hidden { display: none; }
+
+/* Estados do slider dentro do popover de volume (ver .vol-popover acima) */
+.vol-slider:disabled { opacity: .35; cursor: default; }
+

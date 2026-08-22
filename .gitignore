@@ -7,7 +7,7 @@ venv
 /dist
 dist
 dist/
-/__pycache__
+__pycache__/
 context.MD
 logs/
 *.log

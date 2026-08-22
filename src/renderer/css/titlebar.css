@@ -1,0 +1,100 @@
+/* ═══════════════════════════════════════════
+   TITLEBAR
+═══════════════════════════════════════════ */
+.titlebar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 38px;
+  padding: 0 8px 0 14px;
+  background: var(--bg2);
+  border-bottom: 1px solid var(--border);
+  -webkit-app-region: drag;
+}
+.titlebar-drag {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: .03em;
+  color: var(--text2);
+}
+.app-logo { color: var(--accent); font-size: 16px; }
+.titlebar-controls {
+  display: flex;
+  gap: 2px;
+  -webkit-app-region: no-drag;
+}
+.tb-btn {
+  width: 34px; height: 28px;
+  background: transparent;
+  border: none;
+  color: var(--text3);
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+  font-size: 12px;
+  transition: background .15s, color .15s;
+}
+.tb-btn:hover { background: var(--bg3); color: var(--text); }
+.tb-close:hover { background: var(--red); color: #fff; }
+
+
+/* VERSÃO + ATUALIZAÇÃO — ao lado do nome do app (ver index.html) */
+/* O titlebar inteiro é uma região de arrastar a janela (-webkit-app-region:
+   drag, ver .titlebar) — sem isso os cliques nos botões aqui dentro só
+   arrastariam a janela em vez de funcionar. */
+.titlebar-status {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  -webkit-app-region: no-drag;
+}
+.app-version {
+  /* Com padding simétrico (3px em cima e embaixo) e altura automática, o
+     flex/align-items não tem espaço sobrando pra "centralizar" de
+     verdade — a posição do texto acaba sendo só o padding mesmo. E como a
+     fonte mono tem mais espaço reservado acima da linha de base do que
+     abaixo (ascendentes vs. descendentes), o texto parece subir em
+     relação ao centro geométrico do botão. Padding-bottom um pouco maior
+     que o padding-top compensa isso. */
+  display: flex;
+  align-items: center;
+  align-self: center;
+  line-height: 1;
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--text3);
+  background: var(--bg3);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 2px 9px 4px;
+  cursor: pointer;
+  user-select: none;
+  transition: border-color .15s, color .15s;
+}
+/* Também é o botão de "verificar atualização" manual */
+.app-version:hover { border-color: var(--accent); color: var(--accent); }
+
+.btn-update {
+  /* Mesmo ajuste do .app-version — padding-bottom um pouco maior que o
+     top compensa o texto parecendo "alto demais" dentro do botão. */
+  display: flex;
+  align-items: center;
+  align-self: center;
+  line-height: 1;
+  gap: 6px;
+  background: var(--accent);
+  color: #fff;
+  border: none;
+  border-radius: 999px;
+  padding: 3px 12px 5px;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background .15s;
+}
+.btn-update:hover:not(:disabled) { background: var(--accent2); }
+.btn-update:disabled { cursor: default; opacity: .85; }
+.btn-update .update-icon { font-size: 12px; }
+.btn-update.error { background: var(--red); }

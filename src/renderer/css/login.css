@@ -1,0 +1,95 @@
+/* ═══════════════════════════════════════════
+   LOGIN
+═══════════════════════════════════════════ */
+#screen-login {
+  align-items: center;
+  justify-content: center;
+  background:
+    radial-gradient(ellipse 60% 50% at 30% 20%, rgba(79,142,247,.08) 0%, transparent 70%),
+    var(--bg);
+}
+.login-wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 32px;
+  width: 100%;
+  max-width: 420px;
+  padding: 20px;
+}
+.login-brand { text-align: center; }
+.brand-icon {
+  font-size: 48px;
+  color: var(--accent);
+  line-height: 1;
+  margin-bottom: 10px;
+  filter: drop-shadow(0 0 18px rgba(79,142,247,.5));
+}
+.login-brand h1 {
+  font-size: 28px;
+  font-weight: 700;
+  letter-spacing: -.02em;
+  color: var(--text);
+}
+.brand-sub { color: var(--text2); margin-top: 6px; font-size: 13px; }
+
+.login-card {
+  width: 100%;
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 28px;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.field-group { display: flex; flex-direction: column; gap: 6px; }
+.field-group label { font-size: 12px; color: var(--text2); font-weight: 500; letter-spacing: .04em; text-transform: uppercase; }
+
+input[type="text"] {
+  background: var(--bg3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  font-family: var(--font);
+  font-size: 14px;
+  padding: 10px 12px;
+  outline: none;
+  transition: border-color .2s;
+  width: 100%;
+}
+input[type="text"]:focus { border-color: var(--accent); }
+input[type="text"]::placeholder { color: var(--text3); }
+
+.login-actions { display: flex; flex-direction: column; gap: 12px; }
+
+
+.divider {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--text3);
+  font-size: 12px;
+}
+.divider::before, .divider::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--border);
+}
+
+.join-row { display: flex; gap: 8px; }
+.join-row input { flex: 1; font-family: var(--mono); letter-spacing: .1em; }
+
+
+.error-msg {
+  color: var(--red);
+  font-size: 12px;
+  text-align: center;
+  background: rgba(224,92,92,.08);
+  border: 1px solid rgba(224,92,92,.2);
+  border-radius: var(--radius-sm);
+  padding: 8px 12px;
+}
+

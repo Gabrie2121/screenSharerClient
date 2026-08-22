@@ -1,0 +1,37 @@
+/* ═══════════════════════════════════════════
+   POPOVER DE VOLUME POR PARTICIPANTE (chat de voz)
+   Abre ao clicar num participante na sidebar — painel fixo (não preso à
+   lista, que tem scroll próprio) com o mesmo slider (.vol-icon/.vol-slider,
+   ver acima) usado nos cards de stream, pra ficar "idêntico ao painel".
+═══════════════════════════════════════════ */
+.participant-volume-popover {
+  position: fixed;
+  z-index: 210;
+  width: 190px;
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 10px 12px;
+  box-shadow: 0 8px 24px rgba(0,0,0,.4);
+  cursor: default;
+}
+.participant-volume-popover.hidden { display: none; }
+.pv-header {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text2);
+  margin-bottom: 8px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.pv-row { display: flex; align-items: center; gap: 8px; }
+.pv-row .vol-slider { flex: 1; }
+.pv-row output {
+  min-width: 36px;
+  color: var(--accent);
+  font-family: var(--mono);
+  font-size: 12px;
+  text-align: right;
+}
+

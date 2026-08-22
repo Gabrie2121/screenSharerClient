@@ -1,0 +1,23 @@
+/* ═══════════════════════════════════════════
+   AUTOVISUALIZAÇÃO (canto inferior direito, opcional)
+═══════════════════════════════════════════ */
+.self-preview {
+  position: fixed;
+  right: 16px;
+  bottom: 16px;
+  z-index: 130;
+  width: 220px;
+  aspect-ratio: 16 / 9;
+  background: #000;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+  box-shadow: 0 8px 24px rgba(0,0,0,.4);
+}
+.self-preview video {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  display: block;
+}
+
