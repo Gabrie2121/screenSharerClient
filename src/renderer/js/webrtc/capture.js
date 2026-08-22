@@ -160,6 +160,50 @@ function buildMandatoryVideoConstraints(sourceId, { resolution, fps }) {
   }
 }
 
+/* ═══════════════════════════════════════════════════════════════
+   ÁUDIO DO SISTEMA SEM PROCESSAMENTO
+   Pedir `audio: true` faz o Chromium aplicar o processamento padrão de voz
+   na track capturada: cancelamento de eco, supressão de ruído e ganho
+   automático. Isso é o certo para microfone e o EXATO oposto do que se quer
+   num loopback do sistema.
+
+   O sintoma que isso causava: quem assistia ouvia o som da transmissão
+   abafar, "afunilar" e sumir sempre que alguém falava no chat de voz. O
+   cancelador de eco enxerga o áudio do sistema como eco a ser removido —
+   afinal ele é literalmente o que está saindo nas caixas — e o ataca assim
+   que detecta voz. Jogo, música e vídeo iam junto.
+
+   Desligando os três, o som do sistema é transmitido cru, como deveria.
+   Isso NÃO tem relação com excluir o áudio de um app específico da captura:
+   loopback do Windows é tudo ou nada, e continua sendo.
+═══════════════════════════════════════════════════════════════ */
+const SHARE_AUDIO_CONSTRAINTS = {
+  echoCancellation: false,
+  noiseSuppression: false,
+  autoGainControl: false,
+}
+
+async function captureWithSystemAudio(quality) {
+  try {
+    return await navigator.mediaDevices.getDisplayMedia({
+      video: buildVideoConstraints(quality),
+      audio: SHARE_AUDIO_CONSTRAINTS,
+      systemAudio: 'include',
+    })
+  } catch (err) {
+    // Versão do Chromium que não aceita essas constraints no áudio de tela:
+    // volta ao pedido simples. O som volta a sofrer o abafamento descrito
+    // acima, mas é melhor do que transmitir sem áudio nenhum.
+    if (err?.name !== 'OverconstrainedError' && err?.name !== 'TypeError') throw err
+    appLog('WARN', `Constraints de áudio recusadas (${err.name}) — usando áudio padrão`)
+    return navigator.mediaDevices.getDisplayMedia({
+      video: buildVideoConstraints(quality),
+      audio: true,
+      systemAudio: 'include',
+    })
+  }
+}
+
 // Fallback comum de captura só-vídeo — usado tanto quando a pessoa escolhe
 // "Sem som" no modal quanto quando a captura de áudio falha em runtime.
 async function captureVideoOnly(sourceId, quality) {
@@ -196,11 +240,7 @@ async function acquireStream(sourceId, quality) {
     // Obs: não há API do navegador/Electron para excluir o áudio de um app
     // específico (ex.: Discord) — só é possível incluir ou não o áudio inteiro.
     try {
-      stream = await navigator.mediaDevices.getDisplayMedia({
-        video: buildVideoConstraints(quality),
-        audio: true,
-        systemAudio: 'include',
-      })
+      stream = await captureWithSystemAudio(quality)
     } catch (err) {
       // "Could not start audio source" é a captura de loopback do Windows
       // falhando (dispositivo de saída em modo exclusivo, desconectado,
