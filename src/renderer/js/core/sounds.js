@@ -19,11 +19,22 @@ import { state } from './state.js'
 ═══════════════════════════════════════════════════════════════ */
 const SOUNDS = {
   // Caminhos relativos a ESTE arquivo (src/renderer/js/core/sounds.js).
-  'share-start': { src: '../../../assets/holy.mp3',              cut: 1000 },
+  // holy.mp3 continua no repositório: era o som antigo de "alguém
+  // compartilhou". Trocar de volta é só apontar o src daqui pra ele.
+  'share-start': { src: '../../../assets/sounds/share-start.mp3', cut: 1500 },
   'share-stop':  { src: '../../../assets/sounds/share-stop.mp3', cut: 1000 },
   'user-join':   { src: '../../../assets/sounds/user-join.mp3',  cut: 1200 },
   'user-leave':  { src: '../../../assets/sounds/user-leave.mp3', cut: 1200 },
   'camera-on':   { src: '../../../assets/sounds/camera-on.mp3',  cut: 1000 },
+  'camera-off':  { src: '../../../assets/sounds/camera-off.mp3', cut: 1000 },
+  'mic-mute':    { src: '../../../assets/sounds/mic-mute.mp3',   cut: 700 },
+  'mic-unmute':  { src: '../../../assets/sounds/mic-unmute.mp3', cut: 700 },
+  // Alguém começou a assistir a SUA tela. Tocado com atraso (ver
+  // VIEWER_SOUND_DELAY_MS em webrtc/screen-share-peers.js): no instante da
+  // oferta a conexão ainda está negociando, e um som ali se perde no meio
+  // do resto. Alguns segundos depois a pessoa já está de fato te vendo — que
+  // é a informação que importa.
+  'viewer-joined': { src: '../../../assets/sounds/viewer-joined.mp3', cut: 1500 },
 }
 
 // { nome: { audio, cut, cutTimer, unavailable } } — montado sob demanda,

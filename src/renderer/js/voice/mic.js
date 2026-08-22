@@ -1,11 +1,14 @@
 import { $ } from '../core/dom.js'
 import { appLog } from '../core/logger.js'
 import { toast } from '../core/toast.js'
+import { playSound } from '../core/sounds.js'
 import { state, MIC_MUTED_KEY, MIC_DEVICE_KEY } from '../core/state.js'
 import {
   createNoiseSuppressedStream, prepareNoiseSuppression, destroyNoiseSuppression,
 } from './noise-suppression.js'
 import { setupLocalVoiceAnalyser } from './speaking-detection.js'
+import { sendWS } from '../websocket.js'
+import { renderParticipants } from '../participants.js'
 
 /* ═══════════════════════════════════════════════════════════════
    MICROFONE — captura, troca de dispositivo, mutar/desmutar
@@ -88,15 +91,28 @@ export function applyMicMuteState() {
   if (chk) chk.checked = state.micMuted
 }
 
-$('btn-toggle-mic').onclick = async () => {
-  if (!state.localMicStream) await ensureLocalMicStream()
-  state.micMuted = !state.micMuted
-  localStorage.setItem(MIC_MUTED_KEY, String(state.micMuted))
+// Mutar sem retorno nenhum é como a pessoa acaba falando alguns segundos
+// para o vazio — o som confirma sem precisar olhar para o botão.
+function setMicMuted(muted) {
+  state.micMuted = muted
+  localStorage.setItem(MIC_MUTED_KEY, String(muted))
   applyMicMuteState()
+  playSound(muted ? 'mic-mute' : 'mic-unmute')
+  announceMicState()
+  renderParticipants() // atualiza o meu próprio ícone na lista
 }
 
-$('chk-mic-muted').onchange = () => {
-  state.micMuted = $('chk-mic-muted').checked
-  localStorage.setItem(MIC_MUTED_KEY, String(state.micMuted))
-  applyMicMuteState()
+// Avisa a sala se estou mudo. Chamado ao alternar e logo depois do
+// 'room-info' (ver announceMicState em websocket.js): o mudo é lembrado
+// entre sessões via localStorage, então quem entra já mutado precisa
+// anunciar isso — o servidor assume False até ser corrigido.
+export function announceMicState() {
+  sendWS({ type: 'mic-state', payload: { muted: state.micMuted } })
 }
+
+$('btn-toggle-mic').onclick = async () => {
+  if (!state.localMicStream) await ensureLocalMicStream()
+  setMicMuted(!state.micMuted)
+}
+
+$('chk-mic-muted').onchange = () => setMicMuted($('chk-mic-muted').checked)

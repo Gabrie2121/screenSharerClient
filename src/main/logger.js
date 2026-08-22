@@ -20,4 +20,4 @@ function log(level, message) {
   }
 }
 
-module.exports = { log }
+module.exports = { log, LOG_DIR, LOG_FILE }

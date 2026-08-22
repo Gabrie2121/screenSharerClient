@@ -26,18 +26,32 @@ autoUpdater.logger = {
   error: (msg) => log('ERROR', `[updater] ${msg}`),
 }
 
-// Canal de atualização — normal (latest.yml) por padrão. Se a versão desse
-// build for um prerelease semver (ex.: "0.2.0-dev.3"), essa instância entra
-// no canal "dev" (dev.yml): só recebe futuras builds também "-dev", nunca
-// aparece pra quem instalou uma versão estável normal, e vice-versa — os
-// dois canais não se enxergam. É assim que dá pra ter builds de teste sem
-// afetar quem já está usando o app (ver context.MD).
-const versionChannel = app.getVersion().split('-')[1]?.split('.')[0]
-if (versionChannel) {
-  autoUpdater.channel = versionChannel
-  autoUpdater.allowPrerelease = true
-  log('INFO', `Canal de atualização: "${versionChannel}" (build ${app.getVersion()})`)
-}
+/* ── QUEM VÊ QUAIS VERSÕES ──
+   Todo mundo lê o MESMO arquivo, o latest.yml. O que muda entre uma build
+   estável e uma de teste é só aceitar ou não versões prerelease:
+
+     build estável  (0.2.2)        → allowPrerelease = false → só estáveis
+     build de teste (0.2.2-dev.1)  → allowPrerelease = true  → prerelease E estáveis
+
+   Antes daqui, uma build "-dev" fazia `autoUpdater.channel = 'dev'`, o que
+   a mandava procurar um dev.yml no GitHub Releases. Esse arquivo NUNCA foi
+   publicado: o electron-builder só gera o nome do canal quando existe
+   `channel` em build.publish (package.json), e não existe — as releases
+   todas têm apenas latest.yml. Resultado: quem instalou qualquer build
+   "-dev" ficava permanentemente sem atualização, procurando um arquivo
+   inexistente, sem nenhum erro visível.
+
+   Como semver coloca 0.2.2 acima de 0.2.2-dev.1 e de 0.1.13-dev.5, esses
+   presos passam a enxergar a estável mais recente e conseguem sair do
+   buraco sem reinstalar na mão.
+
+   O custo consciente: builds de teste deixam de ser invisíveis para quem
+   está no estável — elas só não são OFERECIDAS a ele, por serem prerelease.
+   Reativar a separação de verdade exigiria acrescentar `channel` em
+   build.publish e publicar nos dois canais. */
+const isPrereleaseBuild = app.getVersion().includes('-')
+autoUpdater.allowPrerelease = isPrereleaseBuild
+log('INFO', `Build ${app.getVersion()} — prereleases: ${isPrereleaseBuild ? 'sim' : 'não'}`)
 
 autoUpdater.on('update-available', (info) => {
   pendingManualCheck = false

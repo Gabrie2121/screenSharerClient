@@ -1,6 +1,7 @@
 {
   "name": "screen-share-electron",
-  "version": "0.2.1-dev.0",
+
+  "version": "0.2.3",
   "author": {
     "name": "Gabriel Miranda",
     "email": "gabriel.miranda041200@gmail.com"
@@ -11,6 +12,7 @@
     "start": "electron .",
     "build": "electron-builder build --win",
     "release": "electron-builder build --win --publish always",
+    "release:dev": "electron-builder build --win --publish always --config.publish.releaseType=prerelease && node scripts/publish-dev-bridge.js",
     "release:linux": "electron-builder build --linux rpm --publish always",
     "version:dev": "npm version prerelease --preid=dev --no-git-tag-version"
   },

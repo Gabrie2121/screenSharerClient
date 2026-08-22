@@ -18,6 +18,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   // Log básico do app (grava em disco via processo principal)
   log: (level, message) => ipcRenderer.send('renderer-log', level, message),
+  // Diagnóstico: onde o log está e como abri-lo (ver Configurações → Avançado)
+  getLogPath: () => ipcRenderer.invoke('get-log-path'),
+  openLogs:   () => ipcRenderer.invoke('open-logs'),
+  toggleDevTools: () => ipcRenderer.send('toggle-devtools'),
 
   // Auto-update
   startUpdate:          () => ipcRenderer.send('update-start'),

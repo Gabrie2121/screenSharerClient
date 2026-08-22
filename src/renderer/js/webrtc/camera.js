@@ -4,6 +4,7 @@ import { toast } from '../core/toast.js'
 import { playSound } from '../core/sounds.js'
 import { state, CAM_DEVICE_KEY } from '../core/state.js'
 import { ICE_CONFIG } from '../core/ice-config.js'
+import { attachIceDebug, noteRemoteCandidate } from '../core/ice-debug.js'
 import { sendWS } from '../websocket.js'
 import { renderParticipants } from '../participants.js'
 import { renderCameraStrip, removeCameraTile } from '../camera-strip.js'
@@ -81,6 +82,7 @@ export async function startCamera() {
 
   renderCameraStrip()
   renderParticipants()
+  playSound('camera-on')
   appLog('INFO', 'Câmera ligada')
   toast('Sua câmera está ligada.')
 }
@@ -111,6 +113,7 @@ export function stopCamera() {
   if (state.stagedCamId === state.myId) state.stagedCamId = null
   renderCameraStrip()
   renderParticipants()
+  playSound('camera-off')
   appLog('INFO', 'Câmera desligada')
 }
 
@@ -128,6 +131,7 @@ function createCamPeer(remoteId, role) {
 
   const pc = new RTCPeerConnection(ICE_CONFIG)
   map[remoteId] = pc
+  attachIceDebug(pc, `camera/${role} ${remoteId.slice(0, 8)}`)
 
   pc.onicecandidate = (e) => {
     if (e.candidate) {
@@ -223,6 +227,7 @@ export async function handleCamIceCandidate(fromId, payload) {
     return
   }
   try {
+    noteRemoteCandidate(pc, payload.candidate)
     await pc.addIceCandidate(new RTCIceCandidate(payload.candidate))
   } catch (err) {
     console.warn('[CAM ICE ERROR]', err)
@@ -232,6 +237,19 @@ export async function handleCamIceCandidate(fromId, payload) {
 export function closeCamPeer(uid) {
   state.camPeers[uid]?.close()
   delete state.camPeers[uid]
+}
+
+// "Fechar a câmera de alguém" — para de RECEBER a câmera daquela pessoa,
+// só pra mim. Não desliga a câmera dela nem avisa ninguém: é o equivalente
+// do "parar de assistir" da tela, e por isso usa o mesmo ícone.
+//
+// Ela continua transmitindo pros outros; se ela desligar e religar a
+// câmera, a oferta nova chega e o tile volta a aparecer aqui — o que é o
+// comportamento desejado, porque aí é uma transmissão nova.
+export function hideCameraOf(uid) {
+  closeCamViewPeer(uid)
+  renderCameraStrip()
+  appLog('INFO', `Câmera de ${uid.slice(0, 8)} fechada localmente`)
 }
 
 export function closeCamViewPeer(uid) {

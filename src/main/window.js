@@ -36,6 +36,15 @@ function createWindow() {
       preload: path.join(__dirname, '..', 'preload.js'),
       contextIsolation: true,
       nodeIntegration: false,
+      // Com a janela escondida (bandeja) ou minimizada, o Chromium
+      // estrangula timers e requestAnimationFrame do renderer até quase
+      // parar. Isso justamente quando o app mais precisa continuar
+      // desenhando: o mini player do PiP compõe as streams num <canvas>
+      // por timer (ver js/auto-pip.js), e sob throttling ele congelava no
+      // último quadro — o vídeo parecia travado ou preto exatamente
+      // enquanto minimizado. Também mantém a captura de tela e as
+      // conexões WebRTC com ritmo normal em segundo plano.
+      backgroundThrottling: false,
     },
   })
 
@@ -77,6 +86,19 @@ function createWindow() {
   })
 
   attachAutoPip(win)
+
+  /* DevTools também na build empacotada. A janela é frameless e sem menu,
+     então o atalho padrão do Electron não existe aqui — sem isto não há
+     como ver console nem rede numa instalação de verdade, que é justamente
+     onde os problemas aparecem. F12 ou Ctrl+Shift+I. */
+  win.webContents.on('before-input-event', (event, input) => {
+    if (input.type !== 'keyDown') return
+    const isF12 = input.key === 'F12'
+    const isInspect = input.control && input.shift && input.key.toLowerCase() === 'i'
+    if (!isF12 && !isInspect) return
+    event.preventDefault()
+    win.webContents.toggleDevTools()
+  })
 
   return win
 }
@@ -122,5 +144,8 @@ ipcMain.on('window-maximize', (e) => {
   win?.isMaximized() ? win.unmaximize() : win.maximize()
 })
 ipcMain.on('window-close', (e) => BrowserWindow.fromWebContents(e.sender)?.close())
+// Mesmo alvo do atalho F12 registrado em createWindow — o botão existe
+// porque numa build empacotada ninguém adivinha que o atalho está lá.
+ipcMain.on('toggle-devtools', (e) => e.sender.toggleDevTools())
 
 module.exports = { createWindow, getMainWindow, setQuitting }

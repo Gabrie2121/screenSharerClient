@@ -1,5 +1,6 @@
 import { $ } from './core/dom.js'
 import { state } from './core/state.js'
+import { hideCameraOf } from './webrtc/camera.js'
 
 /* ═══════════════════════════════════════════════════════════════
    FAIXA DE CÂMERAS
@@ -64,6 +65,7 @@ function upsertTile(strip, uid, stream, isMe) {
     tile.innerHTML = `
       <video autoplay playsinline muted></video>
       <span class="camera-tile-name"></span>
+      <button type="button" class="camera-tile-close" title="Fechar esta câmera">✕</button>
     `
     // A câmera nunca carrega áudio (getUserMedia com audio: false, ver
     // js/webrtc/camera.js), então `muted` aqui é só garantia — e é o que
@@ -72,12 +74,23 @@ function upsertTile(strip, uid, stream, isMe) {
       state.stagedCamId = state.stagedCamId === uid ? null : uid
       renderCameraStrip()
     })
+
+    // Fechar é só pra câmera DOS OUTROS: a própria se desliga no botão da
+    // sidebar, que também libera o dispositivo — fechar o tile daria a
+    // impressão errada de que a câmera parou de ser transmitida.
+    const closeBtn = tile.querySelector('.camera-tile-close')
+    closeBtn.addEventListener('click', (e) => {
+      e.stopPropagation() // senão o clique também promoveria o tile ao palco
+      hideCameraOf(uid)
+    })
+
     strip.appendChild(tile)
   }
 
   // A própria imagem vai espelhada — convenção de videochamada: a pessoa
   // se vê como num espelho. Só a PRÓPRIA; as dos outros não.
   tile.classList.toggle('mirrored', isMe)
+  tile.querySelector('.camera-tile-close').classList.toggle('hidden', isMe)
 
   const name = isMe ? `${state.myName} (você)` : (state.users[uid]?.username || 'Usuário')
   tile.querySelector('.camera-tile-name').textContent = name

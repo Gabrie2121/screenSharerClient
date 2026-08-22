@@ -347,7 +347,11 @@ async function switchSource(sourceId, quality) {
     : 'Tela trocada!')
 }
 
-export function stopSharing() {
+// notifyServer: false é usado quando o socket JÁ caiu (ver teardownRoomMedia
+// em websocket.js) — o sendWS abaixo não chegaria a ninguém, e o toast de
+// "Você parou de compartilhar" seria enganoso: quem parou foi a queda do
+// servidor, não a pessoa.
+export function stopSharing({ notifyServer = true } = {}) {
   if (!state.sharing) return
   discardStream(state.localStream)
   state.localStream = null
@@ -358,8 +362,10 @@ export function stopSharing() {
   $('btn-toggle-share').classList.remove('sharing')
   $('btn-toggle-share').title = 'Compartilhar tela'
 
-  sendWS({ type: 'stop-sharing' })
-  playSound('share-stop')
+  if (notifyServer) {
+    sendWS({ type: 'stop-sharing' })
+    playSound('share-stop')
+  }
 
   // Só fecha as conexões em que EU estava enviando minha tela — antes
   // isso fechava também as conexões em que eu estava assistindo outras
@@ -369,5 +375,5 @@ export function stopSharing() {
 
   renderParticipants()
   appLog('INFO', 'Compartilhamento encerrado')
-  toast('Você parou de compartilhar.')
+  if (notifyServer) toast('Você parou de compartilhar.')
 }

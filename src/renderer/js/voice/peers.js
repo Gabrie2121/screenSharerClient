@@ -1,6 +1,7 @@
 import { $ } from '../core/dom.js'
 import { state } from '../core/state.js'
 import { ICE_CONFIG } from '../core/ice-config.js'
+import { attachIceDebug, noteRemoteCandidate } from '../core/ice-debug.js'
 import { sendWS } from '../websocket.js'
 import { ensureLocalMicStream, applyMicMuteState } from './mic.js'
 import {
@@ -41,6 +42,9 @@ function createVoicePeer(remoteId) {
 
   const pc = new RTCPeerConnection(ICE_CONFIG)
   state.voicePeers[remoteId] = pc
+  // A voz é o grupo de controle do diagnóstico: se ela conecta e tela/câmera
+  // não, o problema é do código delas; se nenhuma conecta, é ICE/rede.
+  attachIceDebug(pc, `voz ${remoteId.slice(0, 8)}`)
 
   if (state.localMicStream) {
     state.localMicStream.getAudioTracks().forEach(track => pc.addTrack(track, state.localMicStream))
@@ -128,6 +132,7 @@ export async function handleVoiceIceCandidate(fromId, payload) {
   const pc = state.voicePeers[fromId]
   if (!pc) return
   try {
+    noteRemoteCandidate(pc, payload.candidate)
     await pc.addIceCandidate(new RTCIceCandidate(payload.candidate))
   } catch (e) {
     console.warn('[VOICE ICE ERROR]', e)

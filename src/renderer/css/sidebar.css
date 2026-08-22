@@ -286,6 +286,16 @@
 
 /* Selinho de "câmera ligada" na lista de participantes — só informativo,
    diferente do indicador de volume, que é clicável. */
+/* Microfone mutado — informativo, como o da câmera. Vermelho de leve pra
+   distinguir do ícone de volume ao lado, que é clicável e cinza. */
+.participant-mic-indicator {
+  font-size: 12px;
+  opacity: .9;
+  flex-shrink: 0;
+  pointer-events: none;
+  filter: saturate(1.4);
+}
+
 .participant-cam-indicator {
   font-size: 12px;
   opacity: .85;

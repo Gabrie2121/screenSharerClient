@@ -19,6 +19,23 @@ require('./main/ipc.js')
 if (process.platform === 'win32') app.setAppUserModelId('com.sharesync.app')
 
 /* ═══════════════════════════════════════════════════════════════
+   NÃO ESTRANGULAR O APP EM SEGUNDO PLANO
+   Fechar no X esconde pra bandeja e minimizar deixa a janela ocluída — nos
+   dois casos o Chromium rebaixa o renderer: timers viram ~1/s e o
+   compositor para de produzir quadros. Isso quebra justamente o que
+   precisa continuar rodando escondido: o mini player do PiP, que compõe as
+   streams num canvas por timer (ver js/auto-pip.js), e a captura de tela
+   que segue sendo transmitida.
+
+   webPreferences.backgroundThrottling: false (ver src/main/window.js) não
+   cobre sozinho o caso de janela OCLUÍDA — daí as três flags abaixo, que
+   precisam ser aplicadas antes do app ficar pronto.
+═══════════════════════════════════════════════════════════════ */
+app.commandLine.appendSwitch('disable-background-timer-throttling')
+app.commandLine.appendSwitch('disable-renderer-backgrounding')
+app.commandLine.appendSwitch('disable-backgrounding-occluded-windows')
+
+/* ═══════════════════════════════════════════════════════════════
    INSTÂNCIA ÚNICA
    Fechar no X esconde o app na bandeja (ver window.on('close') em
    src/main/window.js) — o processo continua vivo, só invisível. Sem o lock

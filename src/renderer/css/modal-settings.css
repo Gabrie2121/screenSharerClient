@@ -156,3 +156,26 @@
 }
 .quality-select-inline:hover { border-color: var(--accent); color: var(--accent); }
 
+
+/* ═══════════════════════════════════════════
+   DIAGNÓSTICO (aba Avançado)
+═══════════════════════════════════════════ */
+.log-path {
+  display: block;
+  margin-top: 6px;
+  padding: 7px 9px;
+  background: var(--bg3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text2);
+  font-size: 11px;
+  /* O caminho é longo e não deve esticar o modal; quebra em vez de rolar. */
+  word-break: break-all;
+  user-select: text;
+}
+.log-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+  flex-wrap: wrap;
+}
