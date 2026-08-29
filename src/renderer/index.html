@@ -306,6 +306,19 @@
                 </div>
               </div>
 
+              <!-- APPS BLOQUEADOS NA TRANSMISSÃO — a API do Windows captura
+                   ou exclui UM processo por vez, então "tudo menos esta
+                   lista" é montado com uma captura por aplicativo permitido,
+                   somadas (ver native/process-audio). Guardado por nome de
+                   executável: o PID muda a cada reinício do app. -->
+              <div class="settings-row settings-row-column">
+                <div class="settings-row-text">
+                  <span class="settings-row-label">Aplicativos fora do áudio da transmissão</span>
+                  <span class="settings-row-hint">Marque quem nunca deve ser ouvido por quem assiste — o Discord é o caso típico. O ShareSync já fica de fora sempre. Depois, escolha "Todo o sistema, exceto os bloqueados" ao compartilhar.</span>
+                </div>
+                <div id="share-exclude-apps" class="app-block-list"></div>
+              </div>
+
               <!-- DUCKING — ver o cabeçalho de js/share-audio-duck.js pro
                    laço que isto resolve: a sua própria voz voltando dentro
                    do áudio da tela de quem compartilha. -->

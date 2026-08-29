@@ -4,12 +4,13 @@ import {
   state, SELF_PREVIEW_KEY, DEFAULT_WATCH_QUALITY_KEY, AUTO_PIP_KEY,
   SOUNDS_ENABLED_KEY, SOUNDS_VOLUME_KEY,
   SHOW_SELF_SCREEN_KEY, SHOW_SELF_CAMERA_KEY,
-  DUCK_ENABLED_KEY, DUCK_AMOUNT_KEY,
+  DUCK_ENABLED_KEY, DUCK_AMOUNT_KEY, SHARE_EXCLUDE_APPS_KEY,
 } from './core/state.js'
 import { previewSound } from './core/sounds.js'
 import { populateCameraSelect } from './webrtc/camera.js'
 import { setPipSource } from './auto-pip.js'
 import { populateAudioDeviceSelects, stopMicTest } from './voice/device-settings.js'
+import { listSystemAudioApps, isSystemAudioAvailable } from './webrtc/system-audio.js'
 import { updateSelfPreview } from './self-preview.js'
 import { renderSelfTile } from './self-tile.js'
 import { renderCameraTiles } from './camera-tiles.js'
@@ -25,6 +26,53 @@ $('btn-settings').onclick = () => {
   // sido concedida uma vez, então vale repopular a cada abertura em vez de
   // só no boot.
   populateCameraSelect()
+  renderAppsBloqueados()
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   APLICATIVOS FORA DO ÁUDIO DA TRANSMISSÃO
+   A lista mostra a união de quem está com som AGORA e de quem já foi
+   bloqueado antes — senão o Discord sumiria da lista sempre que estivesse
+   em silêncio, e não daria pra desmarcá-lo.
+═══════════════════════════════════════════════════════════════ */
+async function renderAppsBloqueados() {
+  const caixa = $('share-exclude-apps')
+  const linha = caixa.closest('.settings-row')
+
+  if (!await isSystemAudioAvailable()) {
+    // Sem captura por aplicativo o áudio é o loopback do sistema inteiro e
+    // não há como tirar ninguém dele.
+    linha.classList.add('hidden')
+    return
+  }
+  linha.classList.remove('hidden')
+
+  const comSom = await listSystemAudioApps()
+  const porExe = new Map(comSom.map(a => [a.exe, a]))
+  for (const exe of state.shareExcludeApps) {
+    if (!porExe.has(exe)) porExe.set(exe, { exe, nome: exe.replace(/\.exe$/i, ''), tocando: false })
+  }
+
+  const itens = [...porExe.values()].sort((a, b) => a.nome.localeCompare(b.nome))
+  if (!itens.length) {
+    caixa.innerHTML = '<div class="app-block-vazio">Nenhum aplicativo com som no momento.</div>'
+    return
+  }
+
+  caixa.innerHTML = itens.map(a => `
+    <label class="app-block-item">
+      <input type="checkbox" value="${a.exe}" ${state.shareExcludeApps.includes(a.exe) ? 'checked' : ''} />
+      <span class="app-block-nome">${a.nome}</span>
+      ${a.tocando ? '<span class="app-block-estado">tocando</span>' : ''}
+    </label>`).join('')
+
+  caixa.querySelectorAll('input').forEach(chk => {
+    chk.onchange = () => {
+      const marcados = [...caixa.querySelectorAll('input:checked')].map(c => c.value)
+      state.shareExcludeApps = marcados
+      localStorage.setItem(SHARE_EXCLUDE_APPS_KEY, JSON.stringify(marcados))
+    }
+  })
 }
 $('btn-close-settings').onclick = () => {
   $('modal-settings').classList.add('hidden')

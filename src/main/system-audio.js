@@ -64,17 +64,22 @@ ipcMain.handle('system-audio-start', (event, opcoes = {}) => {
 
   const wcId = event.sender.id
   try {
-    const { pid, modo } = opcoes
-    const formato = processAudio.start((chunk) => {
+    const { pid, modo, excluir } = opcoes
+    const entregar = (chunk) => {
       const alvo = webContents.fromId(wcId)
       // A janela pode ter sido fechada entre um bloco e outro.
       if (!alvo || alvo.isDestroyed()) return pararCaptura()
       alvo.send('system-audio-chunk', chunk)
-    }, pid, modo)
+    }
+    const formato = modo === 'multi'
+      ? processAudio.startExcluindo(entregar, excluir)
+      : processAudio.start(entregar, pid, modo)
     ouvinteId = wcId
     log('INFO', `[audio-sistema] captura iniciada — ${formato.sampleRate}Hz `
       + `${formato.channels}ch, blocos de ${formato.framesPerChunk} quadros`
-      + ` — ${modo === 'include' ? `só o processo ${pid}` : 'sistema menos este app'}`)
+      + ` — ${modo === 'include' ? `só o processo ${pid}`
+          : modo === 'multi' ? `sistema menos [${(excluir || []).join(', ')}] em ${formato.fontes} fonte(s)`
+          : 'sistema menos este app'}`)
     return { ok: true, ...formato }
   } catch (err) {
     log('WARN', `[audio-sistema] não foi possível iniciar: ${err.message}`)

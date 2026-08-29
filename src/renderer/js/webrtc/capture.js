@@ -76,19 +76,37 @@ async function popularFontesDeAudio() {
 
   const select = $('share-audio-source')
   const apps = await listSystemAudioApps()
+  const bloqueados = state.shareExcludeApps || []
+  const semExtensao = (exe) => exe.replace(/\.exe$/i, '')
+
+  // A opção de lista só aparece quando há algo bloqueado — senão seria
+  // idêntica à primeira e só confundiria.
+  const opcaoBloqueio = bloqueados.length
+    ? `<option value="multi">Todo o sistema, exceto ${bloqueados.length === 1
+        ? semExtensao(bloqueados[0])
+        : `${bloqueados.length} aplicativos bloqueados`}</option>`
+    : ''
+
   select.innerHTML = '<option value="">Todo o sistema (sem o ShareSync)</option>'
+    + opcaoBloqueio
     + apps.map(a => `<option value="${a.pid}" data-nome="${a.nome}">`
       + `Apenas ${a.nome}${a.tocando ? ' — tocando agora' : ''}</option>`).join('')
-  select.value = ''
-  selectedQuality.audioSource = { modo: 'exclude' }
+
+  // Quem se deu ao trabalho de bloquear alguém quer isso valendo por padrão.
+  select.value = bloqueados.length ? 'multi' : ''
   grupo.classList.remove('hidden')
 
   select.onchange = () => {
     const opcao = select.selectedOptions[0]
-    selectedQuality.audioSource = select.value
-      ? { modo: 'include', pid: Number(select.value), nome: opcao?.dataset.nome }
-      : { modo: 'exclude' }
+    if (select.value === 'multi') {
+      selectedQuality.audioSource = { modo: 'multi', excluir: state.shareExcludeApps }
+    } else if (select.value) {
+      selectedQuality.audioSource = { modo: 'include', pid: Number(select.value), nome: opcao?.dataset.nome }
+    } else {
+      selectedQuality.audioSource = { modo: 'exclude' }
+    }
   }
+  select.onchange()
 }
 
 /* Compartilhar uma JANELA já sugere o áudio daquele aplicativo: é quase
@@ -97,6 +115,9 @@ async function popularFontesDeAudio() {
 async function sugerirAudioDaJanela(sourceId) {
   const select = $('share-audio-source')
   if ($('share-audio-source-group').classList.contains('hidden')) return
+  // Não atropela a lista de bloqueio: quem configurou apps bloqueados quer
+  // isso valendo, mesmo escolhendo uma janela.
+  if (select.value === 'multi') return
   const pid = await windowAudioPid(sourceId)
   if (!pid) return
   const opcao = [...select.options].find(o => o.value === String(pid))

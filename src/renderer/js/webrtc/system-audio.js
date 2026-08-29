@@ -64,7 +64,10 @@ export async function startSystemAudioTrack(alvo = {}) {
 
   appLog('INFO', alvo.modo === 'include'
     ? `[audio-sistema] transmitindo só o áudio de ${alvo.nome || 'um aplicativo'}`
-    : '[audio-sistema] captura por processo ativa (sem o áudio do próprio app)')
+    : alvo.modo === 'multi'
+      ? `[audio-sistema] sistema menos [${(alvo.excluir || []).join(', ')}]`
+        + ` — ${resultado.fontes} aplicativo(s) no ar`
+      : '[audio-sistema] captura por processo ativa (sem o áudio do próprio app)')
   return destino.stream.getAudioTracks()[0] || null
 }
 

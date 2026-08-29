@@ -83,5 +83,19 @@ module.exports = {
     if (!addon) throw new Error(motivo)
     return addon.start(onChunk, pid || process.pid, modo === 'include' ? 'include' : 'exclude')
   },
+  /* Captura tudo o que toca na máquina MENOS uma lista de executáveis
+     (["Discord.exe", ...]). O próprio app entra na lista automaticamente.
+     Por baixo é uma captura por aplicativo permitido, somadas — a API do
+     Windows não aceita lista de exclusão num cliente só. A lista de apps é
+     revista a cada 2s, então quem começa a tocar no meio da transmissão
+     entra sozinho. */
+  startExcluindo: (onChunk, excluirExes) => {
+    if (!addon) throw new Error(motivo)
+    return addon.startExcluding(onChunk, Array.isArray(excluirExes) ? excluirExes : [])
+  },
+
+  // Quantas capturas estão no ar (o modo multi varia com o que está tocando).
+  fontesAtivas: () => (addon ? addon.activeSources() : 0),
+
   stop: () => { if (addon) addon.stop() },
 }

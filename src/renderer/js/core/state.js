@@ -19,6 +19,10 @@ export const AUTO_PIP_KEY = 'sharesync:auto-pip'
 // O que o mini player mostra: 'auto' | 'screens' | 'cameras' (ver js/auto-pip.js).
 export const PIP_SOURCE_KEY = 'sharesync:pip-source'
 export const SHARE_AUDIO_KEY = 'sharesync:share-audio'
+// Executáveis que nunca entram no áudio da transmissão (ver
+// js/webrtc/system-audio.js). Guardado por NOME de executável, não por PID:
+// o PID muda a cada vez que o app reinicia.
+export const SHARE_EXCLUDE_APPS_KEY = 'sharesync:share-exclude-apps'
 
 // Chat de voz — preferências persistidas (ver seção "CHAT DE VOZ" em js/voice/).
 export const MIC_MUTED_KEY = 'sharesync:mic-muted'
@@ -98,6 +102,10 @@ export const state = {
   // Preferência de mostrar a autovisualização — persiste em localStorage
   // (SELF_PREVIEW_KEY) e vira o padrão pras próximas vezes que compartilhar.
   showSelfPreview: localStorage.getItem(SELF_PREVIEW_KEY) === 'true',
+  shareExcludeApps: (() => {
+    try { return JSON.parse(localStorage.getItem(SHARE_EXCLUDE_APPS_KEY) || '[]') }
+    catch { return [] }
+  })(),
   // !== 'false' e não === 'true': o padrão é ligado, então só um "false"
   // explicitamente salvo desliga.
   showSelfScreen: localStorage.getItem(SHOW_SELF_SCREEN_KEY) !== 'false',
