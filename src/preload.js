@@ -28,7 +28,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // por onSystemAudioChunk remove o ouvinte, senão duas capturas seguidas
   // deixariam dois ouvintes somando o mesmo áudio.
   systemAudioSupported: () => ipcRenderer.invoke('system-audio-supported'),
-  systemAudioStart:     () => ipcRenderer.invoke('system-audio-start'),
+  systemAudioApps:      () => ipcRenderer.invoke('system-audio-apps'),
+  systemAudioWindowPid: (sourceId) => ipcRenderer.invoke('system-audio-window-pid', sourceId),
+  systemAudioStart:     (opcoes) => ipcRenderer.invoke('system-audio-start', opcoes),
   systemAudioStop:      () => ipcRenderer.send('system-audio-stop'),
   onSystemAudioChunk:   (cb) => {
     const handler = (_e, chunk) => cb(chunk)

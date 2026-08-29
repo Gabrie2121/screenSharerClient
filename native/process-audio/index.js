@@ -33,15 +33,55 @@ try {
   motivo = `binário nativo indisponível: ${err.message}`
 }
 
+/* Nome amigável a partir do executável: "Discord.exe" → "Discord". Alguns
+   nomes não ganham nada com isso (msedgewebview2), mas a alternativa era o
+   DisplayName da sessão, que vem vazio na maioria dos apps de desktop. */
+function nomeAmigavel(exe) {
+  return exe.replace(/\.exe$/i, '')
+}
+
 module.exports = {
   disponivel: () => addon !== null,
   motivoIndisponivel: () => motivo,
-  /* Começa a capturar TUDO que toca na máquina MENOS a árvore de processos
-     deste app. `onChunk` recebe Float32Array intercalado (L,R,L,R…).
+
+  /* Aplicativos com sessão de áudio no dispositivo de saída padrão.
+
+     Agrupado por EXECUTÁVEL, não por processo: apps como o Discord e os
+     navegadores abrem várias sessões (uma por processo filho) e apareceriam
+     repetidos numa lista de escolha. Fica o PID de uma sessão que está
+     tocando quando existe uma — é a que tem mais chance de ser a árvore
+     certa quando o modo é "capturar só este app". */
+  listarApps: () => {
+    if (!addon) return []
+    const porExe = new Map()
+    for (const s of addon.listAudioApps()) {
+      const atual = porExe.get(s.nome)
+      if (!atual) porExe.set(s.nome, { ...s })
+      else if (s.tocando && !atual.tocando) porExe.set(s.nome, { ...s })
+    }
+    return [...porExe.values()]
+      .map(s => ({ pid: s.pid, exe: s.nome, nome: nomeAmigavel(s.nome), tocando: s.tocando }))
+      // Quem está tocando agora primeiro: é quase sempre o que a pessoa quer.
+      .sort((a, b) => (b.tocando - a.tocando) || a.nome.localeCompare(b.nome))
+  },
+
+  /* Processo dono de uma janela, a partir do id do desktopCapturer
+     ("window:<HWND>:0"). Serve pra já vir marcado o áudio do aplicativo
+     que a pessoa escolheu compartilhar. Devolve 0 quando não dá. */
+  pidDaJanela: (sourceId) => {
+    if (!addon || typeof sourceId !== 'string') return 0
+    const m = /^window:(\d+):/.exec(sourceId)
+    if (!m) return 0
+    return addon.windowProcessId(Number(m[1]))
+  },
+
+  /* Começa a capturar. Sem `pid`, o alvo é o próprio processo em modo
+     EXCLUDE: "tudo o que toca na máquina menos este app". Com `pid` e
+     modo 'include', captura SÓ a árvore daquele processo.
      Devolve { sampleRate, channels, framesPerChunk }. Lança se não abrir. */
-  start: (onChunk) => {
+  start: (onChunk, pid, modo) => {
     if (!addon) throw new Error(motivo)
-    return addon.start(onChunk)
+    return addon.start(onChunk, pid || process.pid, modo === 'include' ? 'include' : 'exclude')
   },
   stop: () => { if (addon) addon.stop() },
 }

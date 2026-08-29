@@ -196,6 +196,17 @@
             <button type="button" class="quality-opt" data-value="off">Sem som</button>
           </div>
         </div>
+
+        <!-- DE ONDE VEM O SOM — só aparece com a captura por aplicativo
+             disponível (ver js/webrtc/system-audio.js). "Todo o sistema"
+             já exclui o próprio ShareSync; escolher um aplicativo manda só
+             o som dele, deixando de fora Discord, navegador e notificações.
+             Preenchido a cada abertura do modal, porque a lista de quem
+             está com som muda o tempo todo. -->
+        <div class="quality-group quality-group-wide hidden" id="share-audio-source-group">
+          <span class="quality-label">De onde vem o som</span>
+          <select id="share-audio-source" class="quality-select-inline"></select>
+        </div>
       </div>
 
       <!-- O mesmo modal serve pra começar e pra TROCAR de tela em

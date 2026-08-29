@@ -74,6 +74,11 @@
   flex-shrink: 0;
 }
 .quality-group { display: flex; flex-direction: column; gap: 6px; }
+/* O seletor de origem do som tem nomes de aplicativo de tamanho variável e
+   não cabe na fileira dos botões curtos — ocupa a linha inteira embaixo. */
+.quality-group-wide { flex: 1 1 100%; min-width: 0; }
+.quality-group-wide .quality-select-inline { width: 100%; }
+.modal-quality { flex-wrap: wrap; }
 .quality-label { font-size: 11px; color: var(--text3); }
 .quality-options { display: flex; gap: 6px; }
 .quality-opt {

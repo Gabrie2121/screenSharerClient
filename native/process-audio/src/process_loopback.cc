@@ -35,11 +35,14 @@
 #include <windows.h>
 #include <audioclient.h>
 #include <audioclientactivationparams.h>
+#include <audiopolicy.h>
 #include <mmdeviceapi.h>
 #include <wrl/implements.h>
 
+#include <algorithm>
 #include <atomic>
 #include <thread>
+#include <string>
 #include <vector>
 
 using Microsoft::WRL::ComPtr;
@@ -287,6 +290,107 @@ Napi::Value Stop(const Napi::CallbackInfo& info) {
   return env.Undefined();
 }
 
+/* ═══════════════════════════════════════════════════════════════
+   QUEM ESTÁ TOCANDO SOM AGORA
+
+   Percorre as sessões de áudio do dispositivo de saída padrão e devolve os
+   processos que têm som ativo. É o que alimenta a lista de "transmitir só
+   o áudio deste aplicativo" — sem isso a pessoa teria que adivinhar um PID.
+
+   Os nomes vêm do executável (Discord.exe, chrome.exe): o DisplayName da
+   sessão quase sempre vem vazio em app de desktop, então não dá pra
+   depender dele.
+═══════════════════════════════════════════════════════════════ */
+std::wstring ProcessName(DWORD pid) {
+  HANDLE h = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, pid);
+  if (!h) return L"";
+  wchar_t caminho[MAX_PATH] = {};
+  DWORD tam = MAX_PATH;
+  std::wstring nome;
+  if (QueryFullProcessImageNameW(h, 0, caminho, &tam)) {
+    std::wstring completo(caminho, tam);
+    const size_t barra = completo.find_last_of(L"\\/");
+    nome = (barra == std::wstring::npos) ? completo : completo.substr(barra + 1);
+  }
+  CloseHandle(h);
+  return nome;
+}
+
+Napi::Value ListAudioApps(const Napi::CallbackInfo& info) {
+  Napi::Env env = info.Env();
+  auto lista = Napi::Array::New(env);
+
+  // O chamador é a thread do JS, que pode ou não já ter COM inicializado.
+  // RPC_E_CHANGED_MODE significa "já está, em outro modo" — e aí não é
+  // nosso o direito de desinicializar depois.
+  HRESULT hrInit = CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
+  const bool desinicializar = SUCCEEDED(hrInit);
+
+  ComPtr<IMMDeviceEnumerator> enumerador;
+  ComPtr<IMMDevice> dispositivo;
+  ComPtr<IAudioSessionManager2> gerenciador;
+  ComPtr<IAudioSessionEnumerator> sessoes;
+  uint32_t indice = 0;
+
+  if (SUCCEEDED(CoCreateInstance(__uuidof(MMDeviceEnumerator), nullptr, CLSCTX_ALL,
+                                 IID_PPV_ARGS(&enumerador)))
+      && SUCCEEDED(enumerador->GetDefaultAudioEndpoint(eRender, eConsole, &dispositivo))
+      && SUCCEEDED(dispositivo->Activate(__uuidof(IAudioSessionManager2), CLSCTX_ALL,
+                                         nullptr, &gerenciador))
+      && SUCCEEDED(gerenciador->GetSessionEnumerator(&sessoes))) {
+    int total = 0;
+    sessoes->GetCount(&total);
+    std::vector<DWORD> jaVistos;
+
+    for (int i = 0; i < total; i++) {
+      ComPtr<IAudioSessionControl> controle;
+      if (FAILED(sessoes->GetSession(i, &controle))) continue;
+      ComPtr<IAudioSessionControl2> controle2;
+      if (FAILED(controle.As(&controle2))) continue;
+      // Sons do sistema (avisos do Windows) não são um "aplicativo" que
+      // alguém escolheria transmitir.
+      if (controle2->IsSystemSoundsSession() == S_OK) continue;
+
+      DWORD pid = 0;
+      if (FAILED(controle2->GetProcessId(&pid)) || pid == 0) continue;
+      if (std::find(jaVistos.begin(), jaVistos.end(), pid) != jaVistos.end()) continue;
+      jaVistos.push_back(pid);
+
+      const std::wstring nome = ProcessName(pid);
+      if (nome.empty()) continue;
+
+      AudioSessionState estado = AudioSessionStateInactive;
+      controle->GetState(&estado);
+
+      auto item = Napi::Object::New(env);
+      item.Set("pid", Napi::Number::New(env, pid));
+      item.Set("nome", Napi::String::New(env,
+        reinterpret_cast<const char16_t*>(nome.c_str()), nome.size()));
+      // Ativo = tocando agora. Inativo = tem sessão mas está em silêncio —
+      // ainda vale listar, porque o jogo pode estar num menu mudo.
+      item.Set("tocando", Napi::Boolean::New(env, estado == AudioSessionStateActive));
+      lista.Set(indice++, item);
+    }
+  }
+
+  if (desinicializar) CoUninitialize();
+  return lista;
+}
+
+/* Qual processo é dono de uma janela. O seletor de fonte do Electron
+   entrega ids como "window:<HWND>:0"; com o HWND dá pra pré-selecionar
+   sozinho o áudio do aplicativo que a pessoa escolheu compartilhar. */
+Napi::Value WindowProcessId(const Napi::CallbackInfo& info) {
+  Napi::Env env = info.Env();
+  if (info.Length() < 1 || !info[0].IsNumber()) return Napi::Number::New(env, 0);
+  const auto handle = reinterpret_cast<HWND>(
+      static_cast<uintptr_t>(info[0].As<Napi::Number>().Int64Value()));
+  if (!IsWindow(handle)) return Napi::Number::New(env, 0);
+  DWORD pid = 0;
+  GetWindowThreadProcessId(handle, &pid);
+  return Napi::Number::New(env, pid);
+}
+
 Napi::Value IsSupported(const Napi::CallbackInfo& info) {
   // A API existe a partir do Windows 10 2004 (build 19041). Abaixo disso o
   // ActivateAudioInterfaceAsync com esses parâmetros falha; melhor dizer
@@ -305,6 +409,8 @@ Napi::Object Init(Napi::Env env, Napi::Object exports) {
   exports.Set("start", Napi::Function::New(env, Start));
   exports.Set("stop", Napi::Function::New(env, Stop));
   exports.Set("isSupported", Napi::Function::New(env, IsSupported));
+  exports.Set("listAudioApps", Napi::Function::New(env, ListAudioApps));
+  exports.Set("windowProcessId", Napi::Function::New(env, WindowProcessId));
   return exports;
 }
 

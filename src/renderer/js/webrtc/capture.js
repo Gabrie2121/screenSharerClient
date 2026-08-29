@@ -11,6 +11,7 @@ import { renderSelfTile } from '../self-tile.js'
 import { startSnapshotLoop, stopSnapshotLoop } from '../snapshot.js'
 import {
   startSystemAudioTrack, stopSystemAudioTrack, isSystemAudioAvailable,
+  listSystemAudioApps, windowAudioPid,
 } from './system-audio.js'
 
 /* ═══════════════════════════════════════════════════════════════
@@ -41,6 +42,13 @@ let selectedQuality = {
   // Vem por padrão com som; se a pessoa mudar no modal, fica salvo em
   // localStorage e essa vira a escolha padrão dali pra frente.
   audio: localStorage.getItem(SHARE_AUDIO_KEY) !== 'off',
+  /* De onde o som sai:
+       { modo: 'exclude' }                → tudo da máquina menos o ShareSync
+       { modo: 'include', pid, nome }     → só o som daquele aplicativo
+     Não é lembrado entre aberturas do modal porque o PID muda a cada vez
+     que o app é reiniciado — guardar um PID velho apontaria pra nada (ou,
+     pior, pro processo errado). */
+  audioSource: { modo: 'exclude' },
 }
 
 async function openSourcePicker() {
@@ -48,6 +56,53 @@ async function openSourcePicker() {
   const sources = await window.electronAPI.getSources()
   selectedSourceId = null
   showSourcePicker(sources)
+  // A lista de quem está com som muda o tempo todo, então é montada a cada
+  // abertura — e não no boot.
+  await popularFontesDeAudio()
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   DE ONDE VEM O SOM DA TRANSMISSÃO
+   Só faz sentido com a captura por aplicativo disponível; sem ela o áudio
+   é o loopback do sistema inteiro e não há o que escolher.
+═══════════════════════════════════════════════════════════════ */
+async function popularFontesDeAudio() {
+  const grupo = $('share-audio-source-group')
+  if (!await isSystemAudioAvailable()) {
+    grupo.classList.add('hidden')
+    selectedQuality.audioSource = { modo: 'exclude' }
+    return
+  }
+
+  const select = $('share-audio-source')
+  const apps = await listSystemAudioApps()
+  select.innerHTML = '<option value="">Todo o sistema (sem o ShareSync)</option>'
+    + apps.map(a => `<option value="${a.pid}" data-nome="${a.nome}">`
+      + `Apenas ${a.nome}${a.tocando ? ' — tocando agora' : ''}</option>`).join('')
+  select.value = ''
+  selectedQuality.audioSource = { modo: 'exclude' }
+  grupo.classList.remove('hidden')
+
+  select.onchange = () => {
+    const opcao = select.selectedOptions[0]
+    selectedQuality.audioSource = select.value
+      ? { modo: 'include', pid: Number(select.value), nome: opcao?.dataset.nome }
+      : { modo: 'exclude' }
+  }
+}
+
+/* Compartilhar uma JANELA já sugere o áudio daquele aplicativo: é quase
+   sempre o que a pessoa quer, e evita mandar o Discord junto sem perceber.
+   Fonte de tela inteira não tem processo dono, então fica no padrão. */
+async function sugerirAudioDaJanela(sourceId) {
+  const select = $('share-audio-source')
+  if ($('share-audio-source-group').classList.contains('hidden')) return
+  const pid = await windowAudioPid(sourceId)
+  if (!pid) return
+  const opcao = [...select.options].find(o => o.value === String(pid))
+  if (!opcao) return // aquele app não tem sessão de áudio — nada a sugerir
+  select.value = String(pid)
+  select.onchange()
 }
 
 function showSourcePicker(sources) {
@@ -90,6 +145,7 @@ function selectSource(sourceId) {
     el.classList.toggle('selected', el.dataset.sourceId === sourceId)
   })
   updateTransmitButton()
+  sugerirAudioDaJanela(sourceId)
 }
 
 function updateTransmitButton() {
@@ -265,7 +321,7 @@ async function acquireStream(sourceId, quality) {
        De quebra funciona em máquinas onde o loopback do Chromium nem abre,
        porque escolhe o próprio formato em vez de herdar o do endpoint. */
     stream = await captureVideoOnly(sourceId, quality)
-    const trilha = await startSystemAudioTrack()
+    const trilha = await startSystemAudioTrack(quality.audioSource)
     if (trilha) {
       stream.addTrack(trilha)
     } else {

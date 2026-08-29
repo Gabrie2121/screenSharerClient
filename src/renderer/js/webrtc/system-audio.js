@@ -29,7 +29,7 @@ let removerOuvinte = null
    volta a viver. Quem troca de tela em transmissão passa por replaceTrack
    (ver applySharedStreamToPeer), então uma track nova não custa
    renegociação nenhuma. */
-export async function startSystemAudioTrack() {
+export async function startSystemAudioTrack(alvo = {}) {
   const suporte = await window.electronAPI?.systemAudioSupported?.()
   if (!suporte?.disponivel) {
     appLog('INFO', `[audio-sistema] indisponível — ${suporte?.motivo || 'sem ponte com o processo principal'}`)
@@ -49,7 +49,7 @@ export async function startSystemAudioTrack() {
   destino = ctx.createMediaStreamDestination()
   node.connect(destino)
 
-  const resultado = await window.electronAPI.systemAudioStart()
+  const resultado = await window.electronAPI.systemAudioStart(alvo)
   if (!resultado?.ok) {
     appLog('WARN', `[audio-sistema] falhou ao iniciar: ${resultado?.erro || 'motivo desconhecido'}`)
     return null
@@ -62,7 +62,9 @@ export async function startSystemAudioTrack() {
     node.port.postMessage(chunk, [chunk.buffer])
   })
 
-  appLog('INFO', '[audio-sistema] captura por processo ativa (sem o áudio do próprio app)')
+  appLog('INFO', alvo.modo === 'include'
+    ? `[audio-sistema] transmitindo só o áudio de ${alvo.nome || 'um aplicativo'}`
+    : '[audio-sistema] captura por processo ativa (sem o áudio do próprio app)')
   return destino.stream.getAudioTracks()[0] || null
 }
 
@@ -74,6 +76,24 @@ export function stopSystemAudioTrack() {
 
 // Se a captura por processo está disponível nesta máquina — usado pra
 // decidir entre ela e o loopback antigo (ver acquireStream em capture.js).
+// Aplicativos com som agora, pro seletor do modal de compartilhamento.
+export async function listSystemAudioApps() {
+  try {
+    return await window.electronAPI?.systemAudioApps?.() || []
+  } catch {
+    return []
+  }
+}
+
+// Processo dono da janela escolhida (0 quando a fonte é uma tela inteira).
+export async function windowAudioPid(sourceId) {
+  try {
+    return await window.electronAPI?.systemAudioWindowPid?.(sourceId) || 0
+  } catch {
+    return 0
+  }
+}
+
 export async function isSystemAudioAvailable() {
   const suporte = await window.electronAPI?.systemAudioSupported?.()
   return !!suporte?.disponivel

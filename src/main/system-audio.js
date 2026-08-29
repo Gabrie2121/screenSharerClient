@@ -50,22 +50,31 @@ ipcMain.handle('system-audio-supported', () => ({
   motivo: processAudio.motivoIndisponivel(),
 }))
 
-ipcMain.handle('system-audio-start', (event) => {
+// Lista de aplicativos com som, pro seletor do modal de compartilhamento.
+ipcMain.handle('system-audio-apps', () => processAudio.listarApps())
+
+// Qual processo é dono da janela escolhida — deixa o áudio daquele app já
+// vir marcado quando a pessoa compartilha uma janela específica.
+ipcMain.handle('system-audio-window-pid', (_e, sourceId) => processAudio.pidDaJanela(sourceId))
+
+ipcMain.handle('system-audio-start', (event, opcoes = {}) => {
   // Um pedido novo substitui o anterior — trocar de tela em transmissão
   // passa por aqui, e deixar as duas capturas abertas duplicaria o áudio.
   pararCaptura()
 
   const wcId = event.sender.id
   try {
+    const { pid, modo } = opcoes
     const formato = processAudio.start((chunk) => {
       const alvo = webContents.fromId(wcId)
       // A janela pode ter sido fechada entre um bloco e outro.
       if (!alvo || alvo.isDestroyed()) return pararCaptura()
       alvo.send('system-audio-chunk', chunk)
-    })
+    }, pid, modo)
     ouvinteId = wcId
     log('INFO', `[audio-sistema] captura iniciada — ${formato.sampleRate}Hz `
-      + `${formato.channels}ch, blocos de ${formato.framesPerChunk} quadros`)
+      + `${formato.channels}ch, blocos de ${formato.framesPerChunk} quadros`
+      + ` — ${modo === 'include' ? `só o processo ${pid}` : 'sistema menos este app'}`)
     return { ok: true, ...formato }
   } catch (err) {
     log('WARN', `[audio-sistema] não foi possível iniciar: ${err.message}`)
