@@ -1,4 +1,5 @@
 import { $ } from '../core/dom.js'
+import { setIcon } from '../core/icons.js'
 import { appLog } from '../core/logger.js'
 import { toast } from '../core/toast.js'
 import { playSound } from '../core/sounds.js'
@@ -7,7 +8,7 @@ import { ICE_CONFIG } from '../core/ice-config.js'
 import { attachIceDebug, noteRemoteCandidate } from '../core/ice-debug.js'
 import { sendWS } from '../websocket.js'
 import { renderParticipants } from '../participants.js'
-import { renderCameraStrip, removeCameraTile } from '../camera-strip.js'
+import { renderCameraTiles, removeCameraTile } from '../camera-tiles.js'
 
 /* ═══════════════════════════════════════════════════════════════
    CÂMERA (WEBCAM)
@@ -36,7 +37,16 @@ import { renderCameraStrip, removeCameraTile } from '../camera-strip.js'
    pessoa não teria como mutar pelo botão da sidebar.
 ═══════════════════════════════════════════════════════════════ */
 
-$('btn-toggle-camera').onclick = () => toggleCamera()
+// O catch existe porque uma exceção aqui dentro seria uma "unhandled
+// rejection" silenciosa: o botão já teria mudado de cor e o estado já
+// estaria meio aplicado, mas o resto de startCamera (anunciar pra sala,
+// pôr o tile no palco) não rodaria — e nada apareceria pra ninguém.
+$('btn-toggle-camera').onclick = () => {
+  toggleCamera().catch((err) => {
+    appLog('ERROR', `Falha ao ligar/desligar a câmera: ${err.message}`)
+    toast('Não foi possível ligar a câmera.')
+  })
+}
 
 export async function toggleCamera() {
   if (state.cameraOn) stopCamera()
@@ -73,6 +83,7 @@ export async function startCamera() {
 
   $('btn-toggle-camera').classList.add('active')
   $('btn-toggle-camera').title = 'Desligar câmera'
+  setIcon($('btn-toggle-camera').querySelector('.icon-box'), 'camera')
 
   sendWS({ type: 'start-camera' })
 
@@ -80,7 +91,7 @@ export async function startCamera() {
   // uma oferta no 'user-joined' (ver websocket.js).
   for (const uid of Object.keys(state.users)) offerCameraTo(uid)
 
-  renderCameraStrip()
+  renderCameraTiles()
   renderParticipants()
   playSound('camera-on')
   appLog('INFO', 'Câmera ligada')
@@ -102,6 +113,7 @@ export function stopCamera() {
 
   $('btn-toggle-camera').classList.remove('active')
   $('btn-toggle-camera').title = 'Ligar câmera'
+  setIcon($('btn-toggle-camera').querySelector('.icon-box'), 'camera-off')
 
   sendWS({ type: 'stop-camera' })
 
@@ -110,8 +122,7 @@ export function stopCamera() {
   // tem por que me cegar pras dos outros.
   Object.keys(state.camPeers).forEach(uid => closeCamPeer(uid))
 
-  if (state.stagedCamId === state.myId) state.stagedCamId = null
-  renderCameraStrip()
+  renderCameraTiles()
   renderParticipants()
   playSound('camera-off')
   appLog('INFO', 'Câmera desligada')
@@ -163,8 +174,21 @@ function createCamPeer(remoteId, role) {
     pc.ontrack = (e) => {
       const stream = e.streams[0]
       if (!stream) return
+      /* Esta conexão ainda é a atual pra essa pessoa?
+
+         Um ontrack pode chegar DEPOIS de a câmera ter sido desligada: o
+         evento já estava a caminho quando o 'user-camera-off' fechou o
+         peer. Sem esta checagem, a stream morta voltava pro estado e o
+         tile ressuscitava congelado no último quadro — e só sumia quando
+         o ICE finalmente morria, vários segundos depois. Era o "a imagem
+         fica na tela por um tempo depois de desligar a câmera".
+
+         closeCamViewPeer apaga a entrada do mapa, então comparar com o
+         próprio pc cobre tanto o peer fechado quanto o substituído por
+         uma negociação nova. */
+      if (state.camViewPeers[remoteId] !== pc) return
       state.camStreams[remoteId] = stream
-      renderCameraStrip()
+      renderCameraTiles()
     }
   }
 
@@ -196,7 +220,7 @@ export function reannounceCamera() {
   if (!state.cameraOn || !state.localCamStream) return
   sendWS({ type: 'start-camera' })
   for (const uid of Object.keys(state.users)) offerCameraTo(uid)
-  renderCameraStrip()
+  renderCameraTiles()
   appLog('INFO', 'Câmera reanunciada após reconexão')
 }
 
@@ -248,7 +272,7 @@ export function closeCamPeer(uid) {
 // comportamento desejado, porque aí é uma transmissão nova.
 export function hideCameraOf(uid) {
   closeCamViewPeer(uid)
-  renderCameraStrip()
+  renderCameraTiles()
   appLog('INFO', `Câmera de ${uid.slice(0, 8)} fechada localmente`)
 }
 
@@ -256,7 +280,6 @@ export function closeCamViewPeer(uid) {
   state.camViewPeers[uid]?.close()
   delete state.camViewPeers[uid]
   delete state.camStreams[uid]
-  if (state.stagedCamId === uid) state.stagedCamId = null
   removeCameraTile(uid)
 }
 
@@ -267,7 +290,7 @@ export function closeCamViewPeer(uid) {
 export function cleanupCameraForUser(uid, alsoStopSending = false) {
   closeCamViewPeer(uid)
   if (alsoStopSending) closeCamPeer(uid)
-  renderCameraStrip()
+  renderCameraTiles()
 }
 
 /* ═══════════════════════════════════════════════════════════════

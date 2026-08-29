@@ -4,10 +4,11 @@ import { state } from './core/state.js'
 import { disconnectManually } from './websocket.js'
 import { stopSharing } from './webrtc/capture.js'
 import { stopCamera, closeCamViewPeer } from './webrtc/camera.js'
-import { renderCameraStrip } from './camera-strip.js'
+import { renderCameraTiles } from './camera-tiles.js'
 import { closeVoicePeer } from './voice/peers.js'
-import { destroyNoiseSuppression } from './voice/noise-suppression.js'
+import { destroyMicPipeline } from './voice/noise-suppression.js'
 import { stopSpeakingLoop, clearAllVoiceAnalysers } from './voice/speaking-detection.js'
+import { stopShareAudioDuck } from './share-audio-duck.js'
 import { closeParticipantVolumePopover } from './voice/volume.js'
 
 /* ═══════════════════════════════════════════════════════════════
@@ -37,8 +38,7 @@ $('btn-leave').onclick = () => {
   state.camPeers = {}
   state.camViewPeers = {}
   state.camStreams = {}
-  state.stagedCamId = null
-  renderCameraStrip()
+  renderCameraTiles()
 
   state.watchPeers = {}
   state.sharePeers = {}
@@ -58,18 +58,19 @@ $('btn-leave').onclick = () => {
   Object.keys(state.voicePeers).forEach(uid => closeVoicePeer(uid))
   state.localMicInputStream?.getTracks().forEach(t => t.stop())
   state.localMicStream?.getTracks().forEach(t => t.stop())
-  destroyNoiseSuppression()
+  destroyMicPipeline()
   state.localMicStream = null
   state.localMicInputStream = null
   stopSpeakingLoop()
+  stopShareAudioDuck()
   clearAllVoiceAnalysers()
   state.speaking.clear()
   state.participantVolumes = {}
   state.participantLastVolume = {}
   closeParticipantVolumePopover()
-  $('streams-grid').innerHTML = ''
+  $('stage-grid').innerHTML = ''
   $('stage-empty').classList.remove('hidden')
-  $('streams-grid').classList.add('hidden')
+  $('stage-grid').classList.add('hidden')
   $('participants-list').innerHTML = ''
   showScreen('login')
 }

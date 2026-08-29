@@ -145,7 +145,7 @@ function isUsable(video) {
 }
 
 function collectSources() {
-  const grid = document.getElementById('streams-grid')
+  const grid = document.getElementById('stage-grid')
   const screens = []
   const cameras = []
   const seen = new Set()
@@ -156,9 +156,14 @@ function collectSources() {
     list.push({ stream: video.srcObject, video, label, mirrored })
   }
 
+  // O tile em foco entra primeiro na lista — é o que a pessoa escolheu
+  // ver grande, então é o que deve aparecer no mini player. A chave carrega
+  // o tipo ('screen:<uid>' / 'cam:<uid>'), daí o split pra tirar o uid.
   if (state.focusedId) {
-    const card = grid?.querySelector(`[data-stream="${state.focusedId}"]`)
-    push(screens, card?.querySelector('video'), nameOf(state.focusedId))
+    const tile = grid?.querySelector(`[data-tile="${state.focusedId}"]`)
+    const [kind, uid] = state.focusedId.split(':')
+    push(kind === 'cam' ? cameras : screens, tile?.querySelector('video'), nameOf(uid),
+      tile?.classList.contains('mirrored'))
   }
   for (const card of grid?.querySelectorAll('.stream-card') || []) {
     push(screens, card.querySelector('video'), nameOf(card.dataset.stream))
@@ -249,7 +254,7 @@ function drawInto(src, x, y, w, h) {
 }
 
 function draw() {
-  ctx.fillStyle = '#0f1117'
+  ctx.fillStyle = '#1a1b1e' // mesmo valor de --bg (tokens.css) — canvas não enxerga variável CSS
   ctx.fillRect(0, 0, CANVAS_W, CANVAS_H)
 
   if (!sources.length) {

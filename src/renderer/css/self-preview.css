@@ -16,7 +16,7 @@
   border: 1px solid var(--border);
   border-radius: var(--radius);
   overflow: hidden;
-  box-shadow: 0 8px 24px rgba(0,0,0,.4);
+  box-shadow: var(--shadow);
   cursor: grab;
   user-select: none;
 }
@@ -82,7 +82,7 @@
 .sp-btn:hover { background: rgba(255,255,255,.2); }
 .sp-btn.active { background: var(--accent, #4c8bf5); color: #fff; }
 .sp-btn.hidden { display: none; }
-.sp-btn svg { width: 13px; height: 13px; }
+.sp-btn { --icon-size: 13px; }
 
 /* ── Alça de redimensionar ──
    Fica no canto SUPERIOR ESQUERDO: o inferior direito é justamente pra

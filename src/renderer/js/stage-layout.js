@@ -1,11 +1,32 @@
 import { $ } from './core/dom.js'
+import { setIcon } from './core/icons.js'
 import { state } from './core/state.js'
 
 /* ═══════════════════════════════════════════════════════════════
-   FOCO — uma stream em destaque, as demais minimizadas
+   PALCO — o grid único onde telas e câmeras convivem
+
+   `#stage-grid` guarda os dois tipos de tile: `.stream-card` (tela
+   compartilhada) e `.camera-tile` (webcam). Quem cria cada um é o seu
+   próprio módulo (stream-cards.js / camera-tiles.js); aqui só se decide
+   quantas colunas cabem e quem está em foco.
+
+   FOCO: um tile grande, os demais numa tira menor embaixo. A chave do foco
+   NÃO é o user id — quem compartilha a tela e está com a câmera ligada tem
+   dois tiles ao mesmo tempo, e o uid sozinho não diria qual dos dois está
+   em foco. Por isso `tileKey('screen'|'cam', uid)`.
 ═══════════════════════════════════════════════════════════════ */
-export function toggleFocus(uid) {
-  state.focusedId = state.focusedId === uid ? null : uid
+
+export function tileKey(kind, uid) {
+  return `${kind}:${uid}`
+}
+
+// Todos os tiles do palco, na ordem em que estão no DOM.
+function allTiles(grid = $('stage-grid')) {
+  return Array.from(grid.querySelectorAll('.stream-card, .camera-tile'))
+}
+
+export function toggleFocus(key) {
+  state.focusedId = state.focusedId === key ? null : key
   updateGridLayout()
 }
 
@@ -23,13 +44,13 @@ document.addEventListener('fullscreenchange', () => {
     c.classList.remove('controls-hidden')
     const btn = c.querySelector('.fullscreen-btn')
     if (btn) {
-      btn.textContent = isFs ? '⤬' : '⛶'
+      setIcon(btn, isFs ? 'fullscreen-exit' : 'fullscreen')
       btn.title = isFs ? 'Sair da tela cheia' : 'Tela cheia'
     }
   })
   clearTimeout(hideControlsTimer)
   clearTimeout(hideHeadersTimer)
-  $('streams-grid').classList.remove('headers-hidden')
+  $('stage-grid').classList.remove('headers-hidden')
   if (fsCard) {
     resetControlsHideTimer()
   } else {
@@ -57,7 +78,7 @@ function resetControlsHideTimer() {
 // normalmente, sem precisar desse tratamento).
 let hideHeadersTimer = null
 function resetHeadersHideTimer() {
-  const grid = $('streams-grid')
+  const grid = $('stage-grid')
   grid.classList.remove('headers-hidden')
   clearTimeout(hideHeadersTimer)
   hideHeadersTimer = setTimeout(() => {
@@ -73,12 +94,27 @@ document.addEventListener('mousemove', () => {
   }
 })
 
-export function updateGridLayout() {
-  const grid = $('streams-grid')
-  const cards = Array.from(grid.querySelectorAll('.stream-card'))
+/* ═══════════════════════════════════════════════════════════════
+   QUANTAS COLUNAS
+   A contagem inclui telas E câmeras, porque agora dividem o mesmo grid.
+   As faixas (1, 2, 3-4, 5-6, resto) existem pra um tile nunca ficar
+   pequeno à toa: com duas pessoas no ar, meia tela pra cada é melhor do
+   que um quarto pra cada só porque o layout é fixo em 2x2.
+═══════════════════════════════════════════════════════════════ */
+function countClass(total) {
+  if (total <= 1) return 'count-1'
+  if (total === 2) return 'count-2'
+  if (total <= 4) return 'count-4'
+  if (total <= 6) return 'count-6'
+  return 'count-many'
+}
 
-  if (cards.length === 0) {
-    grid.className = 'streams-grid hidden'
+export function updateGridLayout() {
+  const grid = $('stage-grid')
+  const tiles = allTiles(grid)
+
+  if (tiles.length === 0) {
+    grid.className = 'stage-grid hidden'
     $('stage-empty').classList.remove('hidden')
     return
   }
@@ -86,20 +122,22 @@ export function updateGridLayout() {
   $('stage-empty').classList.add('hidden')
   grid.classList.remove('hidden')
 
-  // Se a stream em foco não existe mais, limpa o foco
-  if (state.focusedId && !cards.some(c => c.dataset.stream === state.focusedId)) {
+  // Se o tile em foco não existe mais (a pessoa parou de compartilhar,
+  // desligou a câmera ou saiu), limpa o foco em vez de deixar o grid
+  // inteiro minimizado atrás de um destaque que não está lá.
+  if (state.focusedId && !tiles.some(t => t.dataset.tile === state.focusedId)) {
     state.focusedId = null
   }
 
   if (state.focusedId) {
-    grid.className = 'streams-grid has-focus'
-    cards.forEach(c => {
-      const isFocused = c.dataset.stream === state.focusedId
-      c.classList.toggle('focused', isFocused)
-      c.classList.toggle('minimized', !isFocused)
+    grid.className = 'stage-grid has-focus'
+    tiles.forEach(t => {
+      const isFocused = t.dataset.tile === state.focusedId
+      t.classList.toggle('focused', isFocused)
+      t.classList.toggle('minimized', !isFocused)
     })
   } else {
-    grid.className = `streams-grid count-${Math.min(cards.length, 4)}`
-    cards.forEach(c => c.classList.remove('focused', 'minimized'))
+    grid.className = `stage-grid ${countClass(tiles.length)}`
+    tiles.forEach(t => t.classList.remove('focused', 'minimized'))
   }
 }

@@ -14,9 +14,10 @@
 .modal {
   background: var(--bg2);
   border: 1px solid var(--border);
-  border-radius: var(--radius);
+  border-radius: var(--radius-lg);
   width: 680px;
   max-height: 80vh;
+  box-shadow: var(--shadow-lg);
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -29,7 +30,7 @@
   border-bottom: 1px solid var(--border);
   flex-shrink: 0;
 }
-.modal-header h2 { font-size: 15px; font-weight: 600; }
+.modal-header h2 { font-size: 16px; font-weight: 600; letter-spacing: -.01em; }
 .source-grid {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
@@ -39,13 +40,13 @@
 }
 .source-item {
   background: var(--bg3);
-  border: 2px solid var(--border);
+  border: 2px solid transparent;
   border-radius: var(--radius-sm);
   cursor: pointer;
   overflow: hidden;
   transition: border-color .15s, transform .1s;
 }
-.source-item:hover { border-color: var(--accent); transform: scale(1.02); }
+.source-item:hover { border-color: var(--border); transform: translateY(-2px); }
 .source-item.selected { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
 .source-thumb {
   width: 100%;
@@ -87,7 +88,10 @@
   transition: all .15s;
 }
 .quality-opt:hover { border-color: var(--accent); color: var(--accent); }
-.quality-opt.active { background: rgba(79,142,247,.15); border-color: var(--accent); color: var(--accent); }
+/* Preenchido, não só contornado: o azul do destaque como TEXTO sobre fundo
+   escuro fica em ~3.4:1 de contraste; branco sobre o azul cheio resolve e
+   ainda deixa a opção escolhida óbvia de relance. */
+.quality-opt.active { background: var(--accent); border-color: var(--accent); color: #fff; }
 
 .modal-footer {
   padding: 14px 16px;
@@ -105,22 +109,23 @@
    único caminho pra parar desde que o botão da sidebar passou a abrir o
    seletor de fonte pra trocar de tela. */
 .btn-danger {
+  --icon-size: 16px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 8px;
   padding: 10px 16px;
-  border-radius: var(--radius);
-  border: 1px solid #7f2a2a;
-  background: #3a1a1a;
-  color: #ff9c9c;
+  border-radius: var(--radius-sm);
+  border: none;
+  background: var(--red-soft);
+  color: var(--red);
   font-size: 13px;
   font-weight: 600;
   cursor: pointer;
   white-space: nowrap;
   transition: background .15s, border-color .15s;
 }
-.btn-danger:hover { background: #521f1f; border-color: #a13636; }
+.btn-danger:hover { background: var(--red); color: #fff; }
 .btn-danger.hidden { display: none; }
 .modal-footer .btn-primary:disabled {
   opacity: .5;

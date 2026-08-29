@@ -11,7 +11,7 @@
   <!-- TITLEBAR -->
   <div class="titlebar">
     <div class="titlebar-drag">
-      <span class="app-logo">⬡</span>
+      <span class="app-logo icon-box" data-icon="logo"></span>
       <span class="app-name">ShareSync</span>
 
       <!-- Versão + atualização — ao lado do nome, lado a lado. A versão
@@ -19,15 +19,15 @@
       <div class="titlebar-status">
         <button id="app-version" class="app-version" title="Verificar atualização"></button>
         <button id="btn-update" class="btn-update hidden" title="Baixar e instalar atualização">
-          <span class="update-icon">⬇</span>
+          <span class="update-icon icon-box" data-icon="download"></span>
           <span id="update-text">Atualização disponível</span>
         </button>
       </div>
     </div>
     <div class="titlebar-controls">
-      <button class="tb-btn" id="btn-min" title="Minimizar">─</button>
-      <button class="tb-btn" id="btn-max" title="Maximizar">□</button>
-      <button class="tb-btn tb-close" id="btn-close" title="Fechar">✕</button>
+      <button class="tb-btn" id="btn-min" title="Minimizar"><span class="icon-box" data-icon="minus"></span></button>
+      <button class="tb-btn" id="btn-max" title="Maximizar"><span class="icon-box" data-icon="square"></span></button>
+      <button class="tb-btn tb-close" id="btn-close" title="Fechar"><span class="icon-box" data-icon="close"></span></button>
     </div>
   </div>
 
@@ -35,7 +35,7 @@
   <div id="screen-login" class="screen active">
     <div class="login-wrap">
       <div class="login-brand">
-        <div class="brand-icon">⬡</div>
+        <div class="brand-icon icon-box" data-icon="logo"></div>
         <h1>ShareSync</h1>
         <p class="brand-sub">Compartilhe sua tela com quem você quiser</p>
       </div>
@@ -53,7 +53,7 @@
 
         <div class="login-actions">
           <button class="btn-primary" id="btn-create-room">
-            <span class="btn-icon">+</span> Criar sala
+            <span class="icon-box" data-icon="plus"></span> Criar sala
           </button>
           <div class="divider"><span>ou entre com o código</span></div>
           <div class="join-row">
@@ -74,72 +74,93 @@
         <span class="room-label">Sala</span>
         <div class="room-id-box">
           <span id="display-room-id">--------</span>
-          <button id="btn-copy-id" class="icon-btn" title="Copiar código">⎘</button>
-        </div>
-        <div class="ping-box" id="ping-box" data-level="0">
-          <span class="ping-bars">
-            <span class="bar b1"></span><span class="bar b2"></span><span class="bar b3"></span><span class="bar b4"></span>
-          </span>
-          <span class="ping-ms" id="ping-ms">-- ms</span>
-
-          <!-- Detalhe ao passar o mouse — histórico dos últimos pings -->
-          <div class="ping-popover">
-            <div class="ping-popover-row"><span>Atual</span><span id="ping-detail-now">-- ms</span></div>
-            <div class="ping-popover-row"><span>Média</span><span id="ping-detail-avg">-- ms</span></div>
-            <div class="ping-popover-row"><span>Mín / máx</span><span id="ping-detail-minmax">-- / -- ms</span></div>
-            <svg id="ping-graph" class="ping-graph" viewBox="0 0 100 28" preserveAspectRatio="none"></svg>
-          </div>
+          <button id="btn-copy-id" class="icon-btn" title="Copiar código"><span class="icon-box" data-icon="copy"></span></button>
         </div>
       </div>
 
-      <div class="participants-label">Participantes</div>
+      <div class="participants-label">
+        <span>Participantes</span>
+        <span class="participants-count" id="participants-count">0</span>
+      </div>
       <ul id="participants-list" class="participants-list"></ul>
 
+      <!-- RODAPÉ — três blocos empilhados, na mesma ordem de leitura de um
+           app de voz: em que estado está a conexão, o que dá pra transmitir,
+           e quem sou eu. O indicador de ping mora aqui (e não mais no
+           cabeçalho, junto do código da sala) porque ele descreve a conexão
+           de voz, não a sala: é a mesma informação que o Discord mostra
+           dentro do painel "Voz conectada". -->
       <div class="sidebar-footer">
-        <div class="share-row">
-          <button class="btn-mic" id="btn-toggle-mic" title="Mutar microfone">
-            <span class="mic-icon">🎤</span>
-          </button>
-          <button class="btn-camera" id="btn-toggle-camera" title="Ligar câmera">
-            <span class="camera-icon">📷</span>
-          </button>
-          <button class="btn-share" id="btn-toggle-share" title="Compartilhar tela">
-            <span class="share-icon">🖥️</span>
-          </button>
-          <button class="btn-settings" id="btn-settings" title="Configurações">
-            <span class="settings-icon">⚙</span>
+        <div class="voice-status">
+          <div class="voice-status-text">
+            <span class="voice-status-title">Voz conectada</span>
+
+            <!-- LATÊNCIA — barrinhas + ms, com histórico no hover (ver js/ping.js) -->
+            <div class="ping-box" id="ping-box" data-level="0">
+              <span class="ping-bars">
+                <span class="bar b1"></span><span class="bar b2"></span><span class="bar b3"></span><span class="bar b4"></span>
+              </span>
+              <span class="ping-ms" id="ping-ms">-- ms</span>
+
+              <div class="ping-popover">
+                <div class="ping-popover-row"><span>Atual</span><span id="ping-detail-now">-- ms</span></div>
+                <div class="ping-popover-row"><span>Média</span><span id="ping-detail-avg">-- ms</span></div>
+                <div class="ping-popover-row"><span>Mín / máx</span><span id="ping-detail-minmax">-- / -- ms</span></div>
+                <svg id="ping-graph" class="ping-graph" viewBox="0 0 100 28" preserveAspectRatio="none"></svg>
+              </div>
+            </div>
+          </div>
+          <button class="btn-leave" id="btn-leave" title="Sair da sala">
+            <span class="icon-box" data-icon="hangup"></span>
           </button>
         </div>
-        <button class="btn-leave" id="btn-leave">Sair da sala</button>
+
+        <!-- Ações de transmissão — com rótulo, porque são as duas coisas que
+             a pessoa entra na sala pra fazer; mutar e configurações são
+             secundárias e ficam como ícone no painel de baixo. -->
+        <div class="share-row">
+          <button class="action-btn btn-share" id="btn-toggle-share" title="Compartilhar tela">
+            <span class="icon-box" data-icon="screen"></span>
+            <span class="action-label">Tela</span>
+          </button>
+          <button class="action-btn btn-camera" id="btn-toggle-camera" title="Ligar câmera">
+            <span class="icon-box" data-icon="camera"></span>
+            <span class="action-label">Câmera</span>
+          </button>
+        </div>
+
+        <div class="user-panel">
+          <div class="user-avatar" id="user-avatar">?</div>
+          <div class="user-meta">
+            <span class="user-name" id="user-name">—</span>
+            <span class="user-sub" id="user-sub">Em voz</span>
+          </div>
+          <button class="user-btn btn-mic" id="btn-toggle-mic" title="Mutar microfone">
+            <span class="icon-box" data-icon="mic"></span>
+          </button>
+          <button class="user-btn btn-settings" id="btn-settings" title="Configurações">
+            <span class="icon-box" data-icon="settings"></span>
+          </button>
+        </div>
       </div>
     </aside>
 
     <main class="stage">
       <!-- Estado vazio -->
       <div id="stage-empty" class="stage-empty">
-        <div class="empty-icon">⬡</div>
+        <div class="empty-icon icon-box" data-icon="screen"></div>
         <p>Nenhuma tela sendo compartilhada</p>
         <span>Aguarde alguém compartilhar ou inicie você mesmo</span>
       </div>
 
-      <!-- FAIXA DE CÂMERAS — tiles pequenos, um por câmera ligada (a sua
-           inclusive). Fica fora do #streams-grid de propósito: o grid é
-           calibrado pra telas compartilhadas (foco, contagem, qualidade
-           por espectador) e uma webcam não deveria disputar aquilo. Ver
-           js/camera-strip.js. -->
-      <div id="camera-strip" class="camera-strip hidden"></div>
-
-      <!-- Câmera promovida ao palco por um clique no tile. -->
-      <div id="camera-stage" class="camera-stage hidden">
-        <video autoplay playsinline muted></video>
-        <div class="camera-stage-bar">
-          <span class="camera-stage-name"></span>
-          <button type="button" class="sp-btn" id="camera-stage-close" title="Devolver à faixa">✕</button>
-        </div>
-      </div>
-
-      <!-- Grid de streams -->
-      <div id="streams-grid" class="streams-grid hidden"></div>
+      <!-- PALCO — um único grid centralizado com TUDO que está no ar:
+           telas compartilhadas (.stream-card, ver js/stream-cards.js) e
+           câmeras (.camera-tile, ver js/camera-tiles.js), lado a lado e do
+           mesmo tamanho. Antes as câmeras ficavam numa faixa própria no
+           topo e o grid era só de telas; agora os dois tipos dividem o
+           mesmo layout, como numa chamada em grupo. Um clique em qualquer
+           tile o coloca em foco (ver toggleFocus em js/stage-layout.js). -->
+      <div id="stage-grid" class="stage-grid hidden"></div>
     </main>
   </div>
 
@@ -148,7 +169,7 @@
     <div class="modal">
       <div class="modal-header">
         <h2 id="modal-source-title">Escolher o que compartilhar</h2>
-        <button class="icon-btn" id="btn-close-modal">✕</button>
+        <button class="icon-btn" id="btn-close-modal" title="Fechar"><span class="icon-box" data-icon="close"></span></button>
       </div>
       <div id="source-grid" class="source-grid"></div>
 
@@ -158,6 +179,7 @@
           <div class="quality-options" id="quality-resolution">
             <button type="button" class="quality-opt" data-value="720">720p</button>
             <button type="button" class="quality-opt active" data-value="1080">1080p</button>
+            <button type="button" class="quality-opt" data-value="1440">1440p</button>
           </div>
         </div>
         <div class="quality-group">
@@ -183,10 +205,10 @@
            sidebar justamente pra ele poder abrir isto aqui. -->
       <div class="modal-footer">
         <button class="btn-danger hidden" id="btn-stop-transmit">
-          <span class="btn-icon">■</span> Parar de transmitir
+          <span class="icon-box" data-icon="stop"></span> Parar de transmitir
         </button>
         <button class="btn-primary" id="btn-start-transmit" disabled>
-          <span class="btn-icon">▶</span> <span id="transmit-label">Transmitir</span>
+          <span class="icon-box" data-icon="play"></span> <span id="transmit-label">Transmitir</span>
         </button>
       </div>
     </div>
@@ -195,216 +217,294 @@
   <!-- MODAL: configurações -->
   <div id="modal-settings" class="modal-backdrop hidden">
     <div class="modal modal-settings">
-      <div class="modal-header">
-        <h2>Configurações</h2>
-        <button class="icon-btn" id="btn-close-settings">✕</button>
-      </div>
+      <!-- Navegação numa coluna à esquerda, e não em abas no topo: é o
+           formato de painel de configurações de app de voz (e o que o
+           usuário pediu). Também escala melhor — cabe mais seção sem
+           espremer as existentes, que era o limite das abas. -->
+      <div class="settings-shell">
+        <nav class="settings-nav" role="tablist" aria-label="Categorias de configurações">
+          <div class="settings-nav-title">Configurações</div>
+          <button type="button" class="settings-tab active" role="tab" aria-selected="true" aria-controls="settings-audio" data-settings-tab="audio" data-settings-label="Áudio">
+            <span class="icon-box" data-icon="mic"></span> Áudio
+          </button>
+          <button type="button" class="settings-tab" role="tab" aria-selected="false" aria-controls="settings-video" data-settings-tab="video" data-settings-label="Vídeo">
+            <span class="icon-box" data-icon="camera"></span> Vídeo
+          </button>
+          <button type="button" class="settings-tab" role="tab" aria-selected="false" aria-controls="settings-advanced" data-settings-tab="advanced" data-settings-label="Avançado">
+            <span class="icon-box" data-icon="sliders"></span> Avançado
+          </button>
+        </nav>
 
-      <div class="settings-tabs" role="tablist" aria-label="Categorias de configurações">
-        <button type="button" class="settings-tab active" role="tab" aria-selected="true" aria-controls="settings-audio" data-settings-tab="audio">
-          <span class="settings-tab-icon">🎙</span> Áudio
-        </button>
-        <button type="button" class="settings-tab" role="tab" aria-selected="false" aria-controls="settings-video" data-settings-tab="video">
-          <span class="settings-tab-icon">▣</span> Vídeo
-        </button>
-        <button type="button" class="settings-tab" role="tab" aria-selected="false" aria-controls="settings-advanced" data-settings-tab="advanced">
-          <span class="settings-tab-icon">⚙</span> Avançado
-        </button>
-      </div>
-
-      <div class="settings-body">
-        <div class="settings-panel active" id="settings-audio" role="tabpanel">
-          <div class="settings-section">
-            <h3 class="settings-section-title">Dispositivos e voz</h3>
-
-          <div class="settings-row">
-            <div class="settings-row-text">
-              <span class="settings-row-label">Microfone</span>
-              <span class="settings-row-hint">Dispositivo de entrada usado no chat de voz.</span>
-            </div>
-            <select id="select-mic" class="quality-select-inline"></select>
+        <div class="settings-main">
+          <div class="modal-header">
+            <h2 id="settings-title">Áudio</h2>
+            <button class="icon-btn" id="btn-close-settings" title="Fechar"><span class="icon-box" data-icon="close"></span></button>
           </div>
 
-          <div class="settings-row">
-            <div class="settings-row-text">
-              <span class="settings-row-label">Saída de áudio</span>
-              <span class="settings-row-hint">Dispositivo usado para ouvir o chat de voz.</span>
-            </div>
-            <select id="select-speaker" class="quality-select-inline"></select>
-          </div>
+          <div class="settings-body">
+            <div class="settings-panel active" id="settings-audio" role="tabpanel">
+              <div class="settings-section">
+                <h3 class="settings-section-title">Dispositivos e voz</h3>
 
-          <div class="settings-row settings-row-column">
-            <div class="settings-row-text">
-              <span class="settings-row-label">Volume geral</span>
-              <span class="settings-row-hint">Afeta o volume de todos</span>
-            </div>
-            <div class="noise-intensity-control">
-              <input type="range" id="master-volume-slider" min="0" max="100" value="100" />
-              <output id="master-volume-value" for="master-volume-slider">100%</output>
-            </div>
-          </div>
-
-          <label class="settings-row">
-            <div class="settings-row-text">
-              <span class="settings-row-label">Supressão de ruído</span>
-              <span class="settings-row-hint">Reduz ruídos constantes do microfone usando RNNoise.</span>
-            </div>
-            <span class="toggle-switch">
-              <input type="checkbox" id="chk-noise-suppression" checked />
-              <span class="toggle-slider"></span>
-            </span>
-          </label>
-
-          <div class="settings-row settings-row-column noise-intensity-row">
-            <div class="settings-row-text">
-              <span class="settings-row-label">Intensidade da supressão</span>
-              <span class="settings-row-hint">Equilibra a voz original e o áudio filtrado. Valores menores preservam mais volume e naturalidade.</span>
-            </div>
-            <div class="noise-intensity-control">
-              <input type="range" id="noise-suppression-slider" min="0" max="100" value="85" />
-              <output id="noise-suppression-value" for="noise-suppression-slider">85%</output>
-            </div>
-          </div>
-
-          <label class="settings-row">
-            <div class="settings-row-text">
-              <span class="settings-row-label">Mutar meu microfone</span>
-              <span class="settings-row-hint">Ninguém ouvirá sua voz enquanto estiver ativado.</span>
-            </div>
-            <span class="toggle-switch">
-              <input type="checkbox" id="chk-mic-muted" />
-              <span class="toggle-slider"></span>
-            </span>
-          </label>
-
-          <div class="settings-row settings-row-column">
-            <div class="settings-row-text">
-              <span class="settings-row-label">Testar microfone e saída</span>
-              <span class="settings-row-hint">Toca o microfone selecionado na saída escolhida — use fones de ouvido para evitar eco.</span>
-            </div>
-            <button type="button" class="btn-secondary" id="btn-test-mic">Testar microfone e saída</button>
-            <div id="mic-test-meter" class="mic-test-meter hidden">
-              <div id="mic-test-meter-fill" class="mic-test-meter-fill"></div>
-            </div>
-          </div>
-          </div>
-
-          <!-- Avisos sonoros — registro por nome em js/core/sounds.js. Os
-               arquivos que ainda não existem simplesmente não tocam. -->
-          <div class="settings-section">
-            <h3 class="settings-section-title">Avisos sonoros</h3>
-
-            <label class="settings-row">
-              <div class="settings-row-text">
-                <span class="settings-row-label">Tocar avisos</span>
-                <span class="settings-row-hint">Sons curtos ao começar/parar um compartilhamento e ao entrar ou sair gente da sala.</span>
+              <div class="settings-row">
+                <div class="settings-row-text">
+                  <span class="settings-row-label">Microfone</span>
+                  <span class="settings-row-hint">Dispositivo de entrada usado no chat de voz.</span>
+                </div>
+                <select id="select-mic" class="quality-select-inline"></select>
               </div>
-              <span class="toggle-switch">
-                <input type="checkbox" id="chk-sounds-enabled" checked />
-                <span class="toggle-slider"></span>
-              </span>
-            </label>
 
-            <div class="settings-row settings-row-column">
-              <div class="settings-row-text">
-                <span class="settings-row-label">Volume dos avisos</span>
-                <span class="settings-row-hint">Separado do volume das vozes. Mexer no slider toca uma prévia.</span>
+              <div class="settings-row">
+                <div class="settings-row-text">
+                  <span class="settings-row-label">Saída de áudio</span>
+                  <span class="settings-row-hint">Dispositivo usado para ouvir o chat de voz.</span>
+                </div>
+                <select id="select-speaker" class="quality-select-inline"></select>
               </div>
-              <div class="noise-intensity-control">
-                <input type="range" id="sounds-volume-slider" min="0" max="100" value="40" />
-                <output id="sounds-volume-value" for="sounds-volume-slider">40%</output>
+
+              <div class="settings-row settings-row-column">
+                <div class="settings-row-text">
+                  <span class="settings-row-label">Volume geral</span>
+                  <span class="settings-row-hint">Afeta o volume de todos</span>
+                </div>
+                <div class="noise-intensity-control">
+                  <input type="range" id="master-volume-slider" min="0" max="100" value="100" />
+                  <output id="master-volume-value" for="master-volume-slider">100%</output>
+                </div>
               </div>
-            </div>
-          </div>
-        </div>
 
-        <div class="settings-panel" id="settings-video" role="tabpanel" hidden>
-          <div class="settings-section">
-            <h3 class="settings-section-title">Vídeo e transmissão</h3>
+              <label class="settings-row">
+                <div class="settings-row-text">
+                  <span class="settings-row-label">Supressão de ruído</span>
+                  <span class="settings-row-hint">Remove ventilador, teclado e chiado do seu microfone (RNNoise). Ligar ou desligar tem efeito imediato e não interrompe sua voz.</span>
+                </div>
+                <span class="toggle-switch">
+                  <input type="checkbox" id="chk-noise-suppression" checked />
+                  <span class="toggle-slider"></span>
+                </span>
+              </label>
 
-          <div class="settings-row">
-            <div class="settings-row-text">
-              <span class="settings-row-label">Câmera</span>
-              <span class="settings-row-hint">Dispositivo usado no modo câmera. Trocar com a câmera ligada reinicia a captura.</span>
-            </div>
-            <select id="select-camera" class="quality-select-inline"></select>
-          </div>
-
-          <label class="settings-row">
-            <div class="settings-row-text">
-              <span class="settings-row-label">Mostrar minha tela</span>
-              <span class="settings-row-hint">Prévia muda enquanto você compartilha — dá pra arrastar, redimensionar e abrir em tela cheia.</span>
-            </div>
-            <span class="toggle-switch">
-              <input type="checkbox" id="chk-self-preview" />
-              <span class="toggle-slider"></span>
-            </span>
-          </label>
-
-          <label class="settings-row">
-            <div class="settings-row-text">
-              <span class="settings-row-label">Janela flutuante ao minimizar</span>
-              <span class="settings-row-hint">Continua mostrando a tela que você assiste numa janelinha por cima de tudo quando o app é minimizado ou vai pra bandeja.</span>
-            </div>
-            <span class="toggle-switch">
-              <input type="checkbox" id="chk-auto-pip" />
-              <span class="toggle-slider"></span>
-            </span>
-          </label>
-
-          <div class="settings-row">
-            <div class="settings-row-text">
-              <span class="settings-row-label">O que mostrar na janela flutuante</span>
-              <span class="settings-row-hint">Dá para alternar sem restaurar o app, pelos botões de faixa da própria janela.</span>
-            </div>
-            <select id="pip-source" class="quality-select-inline">
-              <option value="auto">Telas e câmeras</option>
-              <option value="screens">Só telas</option>
-              <option value="cameras">Só câmeras</option>
-            </select>
-          </div>
-
-          <div class="settings-row">
-            <div class="settings-row-text">
-              <span class="settings-row-label">Qualidade padrão ao assistir</span>
-              <span class="settings-row-hint">Aplicada ao começar a assistir alguém — dá pra mudar na hora, por live, no seletor do card.</span>
-            </div>
-            <select id="default-watch-quality" class="quality-select-inline">
-              <option value="auto">Automática</option>
-              <option value="1080">1080p</option>
-              <option value="720">720p</option>
-              <option value="480">480p</option>
-              <option value="360">360p</option>
-            </select>
-          </div>
-          </div>
-        </div>
-
-        <!-- DIAGNÓSTICO — o caminho do log muda entre build de
-             desenvolvimento e empacotada, então quem informa é o próprio
-             app (ver get-log-path em src/main/ipc.js). -->
-        <div class="settings-panel" id="settings-advanced" role="tabpanel" hidden>
-          <div class="settings-section">
-            <h3 class="settings-section-title">Diagnóstico</h3>
-
-            <div class="settings-row settings-row-column">
-              <div class="settings-row-text">
-                <span class="settings-row-label">Registro de eventos (log)</span>
-                <span class="settings-row-hint">Gravado continuamente enquanto o app roda — dá para abrir sem fechar nada. É o que responde por que uma tela não carregou ou o som não tocou.</span>
+              <div class="settings-row settings-row-column noise-intensity-row">
+                <div class="settings-row-text">
+                  <span class="settings-row-label">Intensidade da supressão</span>
+                  <span class="settings-row-hint">100% envia só o áudio filtrado. Abaixo disso, parte do som original volta à mistura — mais natural, porém com mais ruído de fundo.</span>
+                </div>
+                <div class="noise-intensity-control">
+                  <input type="range" id="noise-suppression-slider" min="0" max="100" value="100" />
+                  <output id="noise-suppression-value" for="noise-suppression-slider">100%</output>
+                </div>
               </div>
-              <code id="log-path" class="log-path">carregando…</code>
-              <div class="log-actions">
-                <button type="button" class="btn-secondary" id="btn-open-logs">Abrir pasta do log</button>
-                <button type="button" class="btn-secondary" id="btn-copy-log-path">Copiar caminho</button>
+
+              <!-- DUCKING — ver o cabeçalho de js/share-audio-duck.js pro
+                   laço que isto resolve: a sua própria voz voltando dentro
+                   do áudio da tela de quem compartilha. -->
+              <label class="settings-row">
+                <div class="settings-row-text">
+                  <span class="settings-row-label">Abaixar a transmissão enquanto alguém fala</span>
+                  <span class="settings-row-hint">Só é necessário quando quem transmite está num Windows anterior à versão 2004: nesses casos o áudio da tela carrega as vozes do chat e volta como eco. Com a captura por aplicativo (o normal), a voz nem entra na transmissão.</span>
+                </div>
+                <span class="toggle-switch">
+                  <input type="checkbox" id="chk-duck" />
+                  <span class="toggle-slider"></span>
+                </span>
+              </label>
+
+              <div class="settings-row settings-row-column">
+                <div class="settings-row-text">
+                  <span class="settings-row-label">Quanto abaixar</span>
+                  <span class="settings-row-hint">70% deixa o som da tela em 30% enquanto há voz. Mais alto elimina melhor o retorno; mais baixo preserva o jogo ou a música.</span>
+                </div>
+                <div class="noise-intensity-control">
+                  <input type="range" id="duck-amount-slider" min="0" max="100" value="70" />
+                  <output id="duck-amount-value" for="duck-amount-slider">70%</output>
+                </div>
+              </div>
+
+              <label class="settings-row">
+                <div class="settings-row-text">
+                  <span class="settings-row-label">Mutar meu microfone</span>
+                  <span class="settings-row-hint">Ninguém ouvirá sua voz enquanto estiver ativado.</span>
+                </div>
+                <span class="toggle-switch">
+                  <input type="checkbox" id="chk-mic-muted" />
+                  <span class="toggle-slider"></span>
+                </span>
+              </label>
+
+              <div class="settings-row settings-row-column">
+                <div class="settings-row-text">
+                  <span class="settings-row-label">Testar microfone e saída</span>
+                  <span class="settings-row-hint">Toca de volta o seu microfone exatamente como os outros ouvem, já com a supressão aplicada. Use fones de ouvido para evitar eco.</span>
+                </div>
+                <button type="button" class="btn-secondary" id="btn-test-mic">Testar microfone e saída</button>
+                <div id="mic-test-meter" class="mic-test-meter hidden">
+                  <div id="mic-test-meter-fill" class="mic-test-meter-fill"></div>
+                </div>
+              </div>
+              </div>
+
+              <!-- Avisos sonoros — registro por nome em js/core/sounds.js. Os
+                   arquivos que ainda não existem simplesmente não tocam. -->
+              <div class="settings-section">
+                <h3 class="settings-section-title">Avisos sonoros</h3>
+
+                <label class="settings-row">
+                  <div class="settings-row-text">
+                    <span class="settings-row-label">Tocar avisos</span>
+                    <span class="settings-row-hint">Sons curtos ao começar/parar um compartilhamento e ao entrar ou sair gente da sala.</span>
+                  </div>
+                  <span class="toggle-switch">
+                    <input type="checkbox" id="chk-sounds-enabled" checked />
+                    <span class="toggle-slider"></span>
+                  </span>
+                </label>
+
+                <div class="settings-row settings-row-column">
+                  <div class="settings-row-text">
+                    <span class="settings-row-label">Volume dos avisos</span>
+                    <span class="settings-row-hint">Separado do volume das vozes. Mexer no slider toca uma prévia.</span>
+                  </div>
+                  <div class="noise-intensity-control">
+                    <input type="range" id="sounds-volume-slider" min="0" max="100" value="40" />
+                    <output id="sounds-volume-value" for="sounds-volume-slider">40%</output>
+                  </div>
+                </div>
               </div>
             </div>
 
-            <div class="settings-row">
-              <div class="settings-row-text">
-                <span class="settings-row-label">Ferramentas do desenvolvedor</span>
-                <span class="settings-row-hint">Console e rede, também na versão instalada. Atalho: F12 ou Ctrl+Shift+I.</span>
+            <div class="settings-panel" id="settings-video" role="tabpanel" hidden>
+              <div class="settings-section">
+                <h3 class="settings-section-title">Vídeo e transmissão</h3>
+
+              <div class="settings-row">
+                <div class="settings-row-text">
+                  <span class="settings-row-label">Câmera</span>
+                  <span class="settings-row-hint">Dispositivo usado no modo câmera. Trocar com a câmera ligada reinicia a captura.</span>
+                </div>
+                <select id="select-camera" class="quality-select-inline"></select>
               </div>
-              <button type="button" class="btn-secondary" id="btn-devtools">Abrir DevTools</button>
+
+              <!-- O QUE APARECE DE MIM NO PALCO — os dois ligados por
+                   padrão. Quem prefere o palco só com os outros desliga
+                   aqui; nada disso muda o que os demais recebem. -->
+              <label class="settings-row">
+                <div class="settings-row-text">
+                  <span class="settings-row-label">Mostrar minha tela no palco</span>
+                  <span class="settings-row-hint">Sua transmissão aparece no meio, do mesmo tamanho que as dos outros. Sempre muda — é a mesma captura que já vai pra sala.</span>
+                </div>
+                <span class="toggle-switch">
+                  <input type="checkbox" id="chk-self-screen" checked />
+                  <span class="toggle-slider"></span>
+                </span>
+              </label>
+
+              <label class="settings-row">
+                <div class="settings-row-text">
+                  <span class="settings-row-label">Mostrar minha câmera no palco</span>
+                  <span class="settings-row-hint">Sua webcam entra no meio junto com as dos outros, para você se ver enquanto transmite.</span>
+                </div>
+                <span class="toggle-switch">
+                  <input type="checkbox" id="chk-self-camera" checked />
+                  <span class="toggle-slider"></span>
+                </span>
+              </label>
+
+              <label class="settings-row">
+                <div class="settings-row-text">
+                  <span class="settings-row-label">Prévia flutuante da minha tela</span>
+                  <span class="settings-row-hint">Janelinha por cima da interface, à parte do palco — arrastável, redimensionável e com tela cheia. Útil para manter a tela à vista enquanto você olha outra coisa.</span>
+                </div>
+                <span class="toggle-switch">
+                  <input type="checkbox" id="chk-self-preview" />
+                  <span class="toggle-slider"></span>
+                </span>
+              </label>
+
+              <label class="settings-row">
+                <div class="settings-row-text">
+                  <span class="settings-row-label">Janela flutuante ao minimizar</span>
+                  <span class="settings-row-hint">Continua mostrando a tela que você assiste numa janelinha por cima de tudo quando o app é minimizado ou vai pra bandeja.</span>
+                </div>
+                <span class="toggle-switch">
+                  <input type="checkbox" id="chk-auto-pip" />
+                  <span class="toggle-slider"></span>
+                </span>
+              </label>
+
+              <div class="settings-row">
+                <div class="settings-row-text">
+                  <span class="settings-row-label">O que mostrar na janela flutuante</span>
+                  <span class="settings-row-hint">Dá para alternar sem restaurar o app, pelos botões de faixa da própria janela.</span>
+                </div>
+                <select id="pip-source" class="quality-select-inline">
+                  <option value="auto">Telas e câmeras</option>
+                  <option value="screens">Só telas</option>
+                  <option value="cameras">Só câmeras</option>
+                </select>
+              </div>
+
+              <div class="settings-row">
+                <div class="settings-row-text">
+                  <span class="settings-row-label">Qualidade padrão ao assistir</span>
+                  <span class="settings-row-hint">Aplicada ao começar a assistir alguém — dá pra mudar na hora, por live, no seletor do card.</span>
+                </div>
+                <select id="default-watch-quality" class="quality-select-inline">
+                  <option value="auto">Automática</option>
+                  <option value="1440">1440p</option>
+                  <option value="1080">1080p</option>
+                  <option value="720">720p</option>
+                  <option value="480">480p</option>
+                  <option value="360">360p</option>
+                </select>
+              </div>
+              </div>
+            </div>
+
+            <!-- DIAGNÓSTICO — o caminho do log muda entre build de
+                 desenvolvimento e empacotada, então quem informa é o próprio
+                 app (ver get-log-path em src/main/ipc.js). -->
+            <div class="settings-panel" id="settings-advanced" role="tabpanel" hidden>
+              <div class="settings-section">
+                <h3 class="settings-section-title">Diagnóstico</h3>
+
+                <div class="settings-row settings-row-column">
+                  <div class="settings-row-text">
+                    <span class="settings-row-label">Registro de eventos (log)</span>
+                    <span class="settings-row-hint">Gravado continuamente enquanto o app roda — dá para abrir sem fechar nada. É o que responde por que uma tela não carregou ou o som não tocou.</span>
+                  </div>
+                  <code id="log-path" class="log-path">carregando…</code>
+                  <div class="log-actions">
+                    <button type="button" class="btn-secondary" id="btn-open-logs">Abrir pasta do log</button>
+                    <button type="button" class="btn-secondary" id="btn-copy-log-path">Copiar caminho</button>
+                  </div>
+                </div>
+
+                <!-- TESTE DO ÁUDIO DO SISTEMA — a captura de loopback do
+                     Windows falha em algumas máquinas (modo exclusivo do
+                     dispositivo, driver virtual, antivírus) e o sintoma é
+                     sempre o mesmo: "transmiti e não foi som nenhum". Este
+                     botão tenta a captura na hora e diz o erro exato, pra
+                     poder testar cada mudança de configuração do Windows
+                     sem precisar entrar numa sala e chamar alguém. -->
+                <div class="settings-row settings-row-column">
+                  <div class="settings-row-text">
+                    <span class="settings-row-label">Testar áudio do sistema</span>
+                    <span class="settings-row-hint">Tenta capturar o som da máquina do mesmo jeito que a transmissão faz, e mostra o resultado. Não transmite nada e não entra em sala nenhuma.</span>
+                  </div>
+                  <div class="log-actions">
+                    <button type="button" class="btn-secondary" id="btn-test-system-audio">Testar agora</button>
+                  </div>
+                  <code id="system-audio-result" class="log-path hidden"></code>
+                </div>
+
+                <div class="settings-row">
+                  <div class="settings-row-text">
+                    <span class="settings-row-label">Ferramentas do desenvolvedor</span>
+                    <span class="settings-row-hint">Console e rede, também na versão instalada. Atalho: F12 ou Ctrl+Shift+I.</span>
+                  </div>
+                  <button type="button" class="btn-secondary" id="btn-devtools">Abrir DevTools</button>
+                </div>
+              </div>
             </div>
           </div>
         </div>
@@ -429,14 +529,8 @@
     <div class="self-preview-bar">
       <span class="self-preview-title">Sua tela</span>
       <div class="self-preview-actions">
-        <button type="button" class="sp-btn" id="self-preview-pip" title="Ver em Picture-in-Picture">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <rect x="3" y="5" width="18" height="14" rx="2"/>
-            <path d="M9 15 L16 8"/>
-            <path d="M11 8 H16 V13"/>
-          </svg>
-        </button>
-        <button type="button" class="sp-btn" id="self-preview-fs" title="Tela cheia">⛶</button>
+        <button type="button" class="sp-btn" id="self-preview-pip" title="Ver em Picture-in-Picture"><span class="icon-box" data-icon="pip"></span></button>
+        <button type="button" class="sp-btn" id="self-preview-fs" title="Tela cheia"><span class="icon-box" data-icon="fullscreen"></span></button>
       </div>
     </div>
     <div id="self-preview-resize" class="self-preview-resize" title="Arraste para redimensionar"></div>
@@ -475,7 +569,7 @@
   <div id="participant-volume-popover" class="participant-volume-popover hidden">
     <div class="pv-header" id="pv-username">Participante</div>
     <div class="pv-row">
-      <button type="button" class="vol-icon" id="pv-mute-btn" title="Mutar/Desmutar">🔊</button>
+      <button type="button" class="vol-icon" id="pv-mute-btn" title="Mutar/Desmutar"><span class="icon-box" data-icon="volume"></span></button>
       <input type="range" class="vol-slider" id="pv-slider" min="0" max="200" value="100" />
       <output id="pv-value" for="pv-slider">100%</output>
     </div>

@@ -1,9 +1,11 @@
 import { $ } from './core/dom.js'
+import { iconSvg, setIcon } from './core/icons.js'
 import { appLog } from './core/logger.js'
 import { toast } from './core/toast.js'
 import { state } from './core/state.js'
 import { sendWS } from './websocket.js'
-import { toggleFocus, updateGridLayout } from './stage-layout.js'
+import { toggleFocus, updateGridLayout, tileKey } from './stage-layout.js'
+import { setCardVolume } from './share-audio-duck.js'
 
 /* ═══════════════════════════════════════════════════════════════
    STREAM CARDS
@@ -82,14 +84,14 @@ function attachVolumeControls(card, stream) {
   if (stream.getAudioTracks().length === 0) {
     slider.disabled = true
     volIcon.disabled = true
-    volIcon.textContent = '🔇'
+    setIcon(volIcon, 'volume-off')
     volIcon.title = 'Esta transmissão não tem áudio'
     volIcon.classList.add('muted')
   }
 
   function syncVolumeIcon() {
     const muted = video.muted || Number(slider.value) === 0
-    volIcon.textContent = muted ? '🔇' : '🔊'
+    setIcon(volIcon, muted ? 'volume-off' : 'volume-low')
     volIcon.classList.toggle('muted', muted)
   }
 
@@ -101,12 +103,12 @@ function attachVolumeControls(card, stream) {
     if (isMuted) {
       const restore = lastVolume > 0 ? lastVolume : 100
       slider.value = restore
-      video.volume = restore / 100
+      setCardVolume(video, restore)
       video.muted = false
     } else {
       lastVolume = Number(slider.value) || lastVolume
       slider.value = 0
-      video.volume = 0
+      setCardVolume(video, 0)
       video.muted = true
     }
     syncVolumeIcon()
@@ -131,7 +133,7 @@ function attachVolumeControls(card, stream) {
 
   slider.addEventListener('input', (e) => {
     const v = Number(slider.value)
-    video.volume = v / 100
+    setCardVolume(video, v)
     // Se o autoplay mudo inicial não conseguiu desmutar sozinho (ver
     // comentário em upsertStreamCard), essa interação do usuário é um
     // gesto válido pro navegador permitir desmutar aqui.
@@ -251,6 +253,8 @@ function buildStreamCard(uid, stream) {
   const card = document.createElement('div')
   card.className = 'stream-card'
   card.dataset.stream = uid
+  // Chave de foco compartilhada com as câmeras (ver tileKey em stage-layout.js)
+  card.dataset.tile = tileKey('screen', uid)
   card.innerHTML = `
     <div class="stream-header">
       <span class="stream-name">${username}</span>
@@ -259,6 +263,7 @@ function buildStreamCard(uid, stream) {
 
         <select class="quality-select" title="Qualidade da transmissão (economiza banda)">
           <option value="auto">Automática</option>
+          <option value="1440">1440p</option>
           <option value="1080">1080p</option>
           <option value="720">720p</option>
           <option value="480">480p</option>
@@ -266,21 +271,15 @@ function buildStreamCard(uid, stream) {
         </select>
 
         <div class="vol-control">
-          <button type="button" class="vol-icon muted" title="Mutar/Desmutar">🔇</button>
+          <button type="button" class="vol-icon muted" title="Mutar/Desmutar">${iconSvg('volume-off')}</button>
           <div class="vol-popover">
             <input type="range" class="vol-slider" min="0" max="100" value="0" />
           </div>
           <div class="vol-tooltip hidden"></div>
         </div>
 
-        <button type="button" class="fullscreen-btn" title="Tela cheia">⛶</button>
-        <button type="button" class="pip-btn" title="Ver em Picture-in-Picture">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <rect x="3" y="5" width="18" height="14" rx="2"/>
-            <path d="M9 15 L16 8"/>
-            <path d="M11 8 H16 V13"/>
-          </svg>
-        </button>
+        <button type="button" class="fullscreen-btn" title="Tela cheia">${iconSvg('fullscreen')}</button>
+        <button type="button" class="pip-btn" title="Ver em Picture-in-Picture">${iconSvg('pip')}</button>
       </div>
     </div>
     <div class="stream-video-wrap">
@@ -297,7 +296,7 @@ function buildStreamCard(uid, stream) {
   // o foco por baixo dos panos.
   card.addEventListener('click', () => {
     if (document.fullscreenElement === card) return
-    toggleFocus(uid)
+    toggleFocus(card.dataset.tile)
   })
 
   attachZoomControls(card)
@@ -311,7 +310,7 @@ function buildStreamCard(uid, stream) {
 }
 
 export function upsertStreamCard(uid, stream) {
-  const grid = $('streams-grid')
+  const grid = $('stage-grid')
   $('stage-empty').classList.add('hidden')
   grid.classList.remove('hidden')
 
@@ -341,7 +340,7 @@ export function upsertStreamCard(uid, stream) {
     // quem assiste ativa o som depois, pelo ícone ou pelo slider.
     video.muted = true
     video.srcObject = stream
-    video.volume = Number(card.querySelector('.vol-slider')?.value ?? 0) / 100
+    setCardVolume(video, Number(card.querySelector('.vol-slider')?.value ?? 0))
     video.play().catch((err) => {
       // AbortError: play() interrompido porque srcObject mudou antes do
       // promise resolver (ontrack dispara para vídeo e áudio em sequência).
@@ -358,7 +357,7 @@ export function upsertStreamCard(uid, stream) {
 export function removeStreamCard(uid) {
   clearInterval(state.statsIntervals[uid])
   delete state.statsIntervals[uid]
-  const card = $('streams-grid').querySelector(`[data-stream="${uid}"]`)
+  const card = $('stage-grid').querySelector(`[data-stream="${uid}"]`)
   // Sem isso, a janela flutuante de Picture-in-Picture ficava travada
   // mostrando um vídeo cujo elemento acabou de sair do DOM.
   const video = card?.querySelector('video')
@@ -371,6 +370,6 @@ export function removeStreamCard(uid) {
     document.exitFullscreen().catch(() => {})
   }
   card?.remove()
-  if (state.focusedId === uid) state.focusedId = null
+  if (state.focusedId === tileKey('screen', uid)) state.focusedId = null
   updateGridLayout()
 }

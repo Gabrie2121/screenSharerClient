@@ -3,9 +3,27 @@
    estrutura das .screen) — cross-cutting, por isso ficam à parte das
    folhas de cada tela/componente.
 ═══════════════════════════════════════════ */
+
+/* Reset. Mora aqui, e não no fim do tokens.css como antes: tokens.css é só
+   a lista de variáveis, e uma regra de verdade escondida no rodapé dele é
+   fácil de perder de vista numa reescrita — foi o que aconteceu. Sem o
+   box-sizing: border-box, todo elemento com padding + width:100% (o
+   #stage-grid, por exemplo) fica maior que o pai e vaza do layout. */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+html, body {
+  height: 100%;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font);
+  font-size: 14px;
+  overflow: hidden;
+  user-select: none;
+}
+
 .screen {
   display: none;
-  height: calc(100vh - 38px);
+  height: calc(100vh - var(--titlebar-h));
 }
 .screen.active { display: flex; }
 
@@ -24,6 +42,7 @@
   cursor: pointer;
   transition: background .15s, transform .1s;
 }
+.btn-primary { --icon-size: 18px; }
 .btn-primary:hover { background: var(--accent2); }
 .btn-primary:active { transform: scale(.98); }
 .btn-primary:disabled,
@@ -32,7 +51,25 @@
   cursor: default;
   transform: none;
 }
-.btn-icon { font-size: 18px; line-height: 1; }
+/* ═══════════════════════════════════════════
+   ÍCONES — caixa + SVG (ver js/core/icons.js)
+   O tamanho é uma variável e não um valor fixo porque o mesmo ícone
+   aparece em contextos de escala bem diferente (14px num selo da lista de
+   participantes, 22px num botão do rodapé): quem define é o contexto,
+   herdando por CSS, sem precisar de uma classe por tamanho.
+═══════════════════════════════════════════ */
+.icon-box {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  line-height: 0;
+}
+.icon {
+  display: block;
+  width: var(--icon-size, 20px);
+  height: var(--icon-size, 20px);
+}
 
 .btn-secondary {
   display: inline-flex;
@@ -50,21 +87,25 @@
   transition: background .15s, border-color .15s;
   white-space: nowrap;
 }
-.btn-secondary:hover { background: var(--border); border-color: var(--text3); }
+.btn-secondary { --icon-size: 17px; }
+.btn-secondary:hover { background: var(--bg4); border-color: var(--bg4); }
 
 .hidden { display: none !important; }
 
 .icon-btn {
+  --icon-size: 17px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   background: none;
   border: none;
   color: var(--text3);
   cursor: pointer;
-  font-size: 15px;
-  padding: 2px 4px;
+  padding: 5px;
   border-radius: 4px;
   transition: color .15s, background .15s;
 }
-.icon-btn:hover { color: var(--text); background: var(--border); }
+.icon-btn:hover { color: var(--text); background: var(--hover2); }
 
 .spinner {
   width: 28px; height: 28px;

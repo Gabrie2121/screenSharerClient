@@ -7,7 +7,11 @@ import { sendWS } from '../websocket.js'
 import { renderParticipants } from '../participants.js'
 import { closeSharePeer, replaceSharedStream } from './screen-share-peers.js'
 import { updateSelfPreview } from '../self-preview.js'
+import { renderSelfTile } from '../self-tile.js'
 import { startSnapshotLoop, stopSnapshotLoop } from '../snapshot.js'
+import {
+  startSystemAudioTrack, stopSystemAudioTrack, isSystemAudioAvailable,
+} from './system-audio.js'
 
 /* ═══════════════════════════════════════════════════════════════
    COMPARTILHAR TELA
@@ -22,7 +26,14 @@ $('btn-toggle-share').onclick = () => openSourcePicker()
 
 // Qualidade de transmissão — resolução (altura, em px) e taxa de quadros.
 // Escolhidas no modal de fonte, aplicadas como constraints da captura.
-const QUALITY_HEIGHTS = { 720: { width: 1280, height: 720 }, 1080: { width: 1920, height: 1080 } }
+// Alturas de captura oferecidas no modal. 1440p (2560x1440) é o teto: é a
+// resolução nativa de boa parte dos monitores ultrawide/QHD, e capturar
+// acima da tela real não acrescenta detalhe nenhum — só banda.
+const QUALITY_HEIGHTS = {
+  720:  { width: 1280, height: 720 },
+  1080: { width: 1920, height: 1080 },
+  1440: { width: 2560, height: 1440 },
+}
 let selectedSourceId = null
 let selectedQuality = {
   resolution: 1080,
@@ -217,6 +228,16 @@ async function captureVideoOnly(sourceId, quality) {
   }
 }
 
+// Qual é o dispositivo de saída padrão na hora da falha — é a informação
+// que decide o diagnóstico depois, e some se não for gravada agora.
+async function logAudioOutputDevice() {
+  try {
+    const devices = await navigator.mediaDevices.enumerateDevices()
+    const padrao = devices.find(d => d.kind === 'audiooutput' && d.deviceId === 'default')
+    appLog('INFO', `[SHARE] saída de áudio padrão no momento da falha: ${padrao?.label || 'desconhecida'}`)
+  } catch { /* enumerateDevices indisponível — segue sem essa informação */ }
+}
+
 // Captura de fato, com todo o fallback de áudio. Devolve { stream,
 // audioIssue } e deixa pra quem chamou decidir o que fazer com a stream
 // (começar a transmitir ou trocar a que já está no ar). Lança se nem o
@@ -235,21 +256,56 @@ async function acquireStream(sourceId, quality) {
   if (!quality.audio) {
     // Escolha explícita de "Sem som" no modal — nem tenta capturar áudio.
     stream = await captureVideoOnly(sourceId, quality)
+  } else if (await isSystemAudioAvailable()) {
+    /* CAMINHO PREFERIDO — captura por processo (ver webrtc/system-audio.js).
+       O vídeo vem do getDisplayMedia normal e o áudio vem do módulo nativo,
+       que captura a máquina inteira MENOS o próprio ShareSync. É isso que
+       impede a voz do chat de voltar dentro do áudio da tela: ela sai da
+       captura na origem, em vez de ser abafada depois.
+       De quebra funciona em máquinas onde o loopback do Chromium nem abre,
+       porque escolhe o próprio formato em vez de herdar o do endpoint. */
+    stream = await captureVideoOnly(sourceId, quality)
+    const trilha = await startSystemAudioTrack()
+    if (trilha) {
+      stream.addTrack(trilha)
+    } else {
+      // Disponível mas não abriu: cai pro loopback antigo antes de desistir
+      // do áudio — é melhor ter som com eco do que não ter som.
+      appLog('WARN', '[SHARE] captura por processo não abriu — tentando o loopback do sistema')
+      try {
+        const comLoopback = await captureWithSystemAudio(quality)
+        stream.getTracks().forEach(t => t.stop())
+        stream = comLoopback
+      } catch (err) {
+        await logAudioOutputDevice()
+        audioIssue = err
+        appLog('WARN', `[SHARE] loopback do sistema também falhou (${err.message}) — transmitindo só vídeo`)
+      }
+    }
   } else {
-    // Tenta primeiro com getDisplayMedia, pedindo áudio do sistema (tela toda).
-    // Obs: não há API do navegador/Electron para excluir o áudio de um app
-    // específico (ex.: Discord) — só é possível incluir ou não o áudio inteiro.
+    // Sem o módulo nativo (Windows antigo, binário ausente): loopback do
+    // sistema inteiro, o caminho de sempre — com o eco que ele traz junto.
     try {
       stream = await captureWithSystemAudio(quality)
     } catch (err) {
-      // "Could not start audio source" é a captura de loopback do Windows
-      // falhando (dispositivo de saída em modo exclusivo, desconectado,
-      // mudo, etc.) — isso não deveria impedir compartilhar o vídeo.
+      // "Could not start audio source" é o WASAPI loopback do Windows se
+      // recusando a abrir. Medido num caso real: falha em TODAS as
+      // variações — tela ou janela, com ou sem constraints de áudio, com
+      // 'loopback' ou 'loopbackWithMute' —, o que descarta a fonte e as
+      // constraints como causa. O que sobra é o dispositivo de saída: modo
+      // exclusivo ligado, formato não suportado, ou um driver virtual (o
+      // caso visto foi um headset sem fio Logitech). Nada disso o app tem
+      // como contornar por código — mas também não pode impedir a
+      // transmissão do vídeo.
       const isAudioIssue = err?.name === 'NotReadableError' && /audio/i.test(err.message || '')
       if (!isAudioIssue) throw err
 
       audioIssue = err
-      appLog('WARN', `Captura de áudio do sistema falhou (${err.message}) — tentando só vídeo`)
+      await logAudioOutputDevice()
+      appLog('WARN', `Captura de áudio do sistema falhou (${err.message}) — transmitindo só vídeo.`
+        + ' Causas conhecidas, em ordem: antivírus com proteção de captura de áudio;'
+        + ' controle exclusivo ligado no dispositivo de saída; driver do dispositivo.'
+        + ' Use Configurações → Avançado → "Testar áudio do sistema" para isolar.')
       stream = await captureVideoOnly(sourceId, quality)
     }
   }
@@ -305,16 +361,17 @@ async function captureSource(sourceId, quality) {
 
     watchTrackEnd(stream)
 
-    // Por padrão a própria tela compartilhada não aparece — só os outros
-    // participantes a veem. Se a preferência estiver ativa, mostra a
-    // prévia local mudinha no canto inferior direito (ver updateSelfPreview).
+    // A própria tela entra no palco junto com as dos outros (ver
+    // js/self-tile.js). A prévia flutuante do canto é outra coisa, opcional
+    // em Configurações → Vídeo (ver updateSelfPreview).
+    renderSelfTile()
     updateSelfPreview()
     startSnapshotLoop()
     renderParticipants()
     appLog('INFO', `Compartilhamento iniciado (áudio: ${stream.getAudioTracks().length > 0}, `
       + `qualidade: ${quality.resolution}p@${quality.fps}fps)`)
     if (audioIssue) {
-      toast('Compartilhando a tela sem áudio — não foi possível capturar o áudio do sistema.')
+      toast('Transmitindo sem o som do sistema — o Windows recusou a captura. Veja o log em Configurações → Avançado.')
     } else {
       toast(stream.getAudioTracks().length
         ? 'Você está compartilhando a tela com áudio!'
@@ -375,6 +432,7 @@ async function switchSource(sourceId, quality) {
   // assiste alguns frames sem imagem nenhuma durante a troca.
   discardStream(previous)
 
+  renderSelfTile()
   updateSelfPreview()
   // O <video> escondido do snapshot ainda aponta pra stream antiga.
   startSnapshotLoop()
@@ -383,7 +441,7 @@ async function switchSource(sourceId, quality) {
   appLog('INFO', `Tela trocada em transmissão (${viewers} assistindo, áudio: `
     + `${stream.getAudioTracks().length > 0}, qualidade: ${quality.resolution}p@${quality.fps}fps)`)
   toast(audioIssue
-    ? 'Tela trocada — sem áudio, não foi possível capturar o áudio do sistema.'
+    ? 'Tela trocada, mas sem o som do sistema — o Windows recusou a captura.'
     : 'Tela trocada!')
 }
 
@@ -394,8 +452,12 @@ async function switchSource(sourceId, quality) {
 export function stopSharing({ notifyServer = true } = {}) {
   if (!state.sharing) return
   discardStream(state.localStream)
+  // A captura nativa é global da máquina: sem parar aqui, ela seguiria
+  // lendo áudio pra ninguém depois que a transmissão acabou.
+  stopSystemAudioTrack()
   state.localStream = null
   state.sharing = false
+  renderSelfTile()
   updateSelfPreview()
   stopSnapshotLoop()
 

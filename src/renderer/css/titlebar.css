@@ -20,13 +20,17 @@
   letter-spacing: .03em;
   color: var(--text2);
 }
-.app-logo { color: var(--accent); font-size: 16px; }
+.app-logo { --icon-size: 18px; color: var(--accent); }
 .titlebar-controls {
   display: flex;
   gap: 2px;
   -webkit-app-region: no-drag;
 }
 .tb-btn {
+  --icon-size: 14px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   width: 34px; height: 28px;
   background: transparent;
   border: none;
@@ -96,5 +100,5 @@
 }
 .btn-update:hover:not(:disabled) { background: var(--accent2); }
 .btn-update:disabled { cursor: default; opacity: .85; }
-.btn-update .update-icon { font-size: 12px; }
+.btn-update .update-icon { --icon-size: 13px; }
 .btn-update.error { background: var(--red); }

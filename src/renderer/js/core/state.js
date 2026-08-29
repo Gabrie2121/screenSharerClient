@@ -2,6 +2,12 @@
    ESTADO — objeto compartilhado, mutado in-place por todos os módulos
    que precisam dele (importe `state` e leia/grave direto nas chaves).
 ═══════════════════════════════════════════════════════════════ */
+// O que aparece de MIM no palco (ver js/self-tile.js e js/camera-tiles.js).
+// Ligados por padrão: o normal é querer se ver; quem não quiser desliga.
+export const SHOW_SELF_SCREEN_KEY = 'sharesync:show-self-screen'
+export const SHOW_SELF_CAMERA_KEY = 'sharesync:show-self-camera'
+// Prévia FLUTUANTE da própria tela — outra coisa: uma janelinha por cima da
+// interface, não um tile do palco (ver js/self-preview.js).
 export const SELF_PREVIEW_KEY = 'sharesync:show-self-preview'
 // Onde a autovisualização ficou por último — { left, top, width }. É posição
 // de janela, não de sala: vale pra qualquer sala que a pessoa entrar depois
@@ -23,6 +29,9 @@ export const CAM_DEVICE_KEY = 'sharesync:cam-device'
 export const MASTER_VOLUME_KEY = 'sharesync:master-volume'
 export const NOISE_SUPPRESSION_KEY = 'sharesync:noise-suppression'
 export const NOISE_INTENSITY_KEY = 'sharesync:noise-intensity'
+// Abaixar o áudio das telas enquanto alguém fala (ver js/share-audio-duck.js).
+export const DUCK_ENABLED_KEY = 'sharesync:duck-while-talking'
+export const DUCK_AMOUNT_KEY = 'sharesync:duck-amount'
 
 // Avisos sonoros (ver core/sounds.js) — liga/desliga e volume, separados do
 // volume do chat de voz: são coisas diferentes e a pessoa costuma querer o
@@ -89,6 +98,10 @@ export const state = {
   // Preferência de mostrar a autovisualização — persiste em localStorage
   // (SELF_PREVIEW_KEY) e vira o padrão pras próximas vezes que compartilhar.
   showSelfPreview: localStorage.getItem(SELF_PREVIEW_KEY) === 'true',
+  // !== 'false' e não === 'true': o padrão é ligado, então só um "false"
+  // explicitamente salvo desliga.
+  showSelfScreen: localStorage.getItem(SHOW_SELF_SCREEN_KEY) !== 'false',
+  showSelfCamera: localStorage.getItem(SHOW_SELF_CAMERA_KEY) !== 'false',
 
   // Qualidade padrão ao começar a assistir alguém (Configurações → Live) —
   // 'auto' ou uma altura em px ('360'/'480'/'720'/'1080'). Dá pra mudar na
@@ -110,7 +123,10 @@ export const state = {
   // aqui todo mundo que tinha escolhido 360p/480p voltava pra resolução cheia.
   viewerQuality: {},
 
-  // Stream em foco na tela (as demais ficam minimizadas embaixo)
+  // Tile em foco no palco — as demais ficam minimizadas numa tira embaixo.
+  // Guarda a CHAVE do tile ('screen:<uid>' ou 'cam:<uid>', ver tileKey em
+  // js/stage-layout.js), não o user id: quem compartilha a tela e está com
+  // a câmera ligada tem dois tiles ao mesmo tempo.
   focusedId: null,
 
   // Medição de latência (ping) — histórico curto pro popover de detalhe
@@ -155,9 +171,6 @@ export const state = {
   localCamStream: null,
   cameraOn: false,
   camDeviceId: localStorage.getItem(CAM_DEVICE_KEY) || '',
-  // Câmera promovida ao palco (aparece como card grande em vez de só o
-  // tile da faixa) — null = todas na faixa.
-  stagedCamId: null,
 
   // ── CHAT DE VOZ ──
   // Uma RTCPeerConnection bidirecional por participante (mic vai e vem na
@@ -183,7 +196,15 @@ export const state = {
   // 40% era o volume fixo do antigo shareSound — vira só o padrão agora.
   soundsEnabled: localStorage.getItem(SOUNDS_ENABLED_KEY) !== 'false',
   soundsVolume: Number(localStorage.getItem(SOUNDS_VOLUME_KEY) ?? 40),
-  noiseIntensity: Number(localStorage.getItem(NOISE_INTENSITY_KEY) ?? 85),
+  noiseIntensity: Number(localStorage.getItem(NOISE_INTENSITY_KEY) ?? 100),
+  // DESLIGADO por padrão desde que a captura por processo entrou (ver
+  // native/process-audio): com ela, a voz do chat nem chega a fazer parte
+  // do áudio da tela, então não há eco pra abafar. Isto virou plano B pra
+  // quem cai no loopback antigo — Windows anterior ao 2004, ou binário
+  // nativo ausente.
+  duckWhileTalking: localStorage.getItem(DUCK_ENABLED_KEY) === 'true',
+  // Quanto abaixar, em %. 70 = o som da tela cai pra 30% enquanto alguém fala.
+  duckAmount: Number(localStorage.getItem(DUCK_AMOUNT_KEY) ?? 70),
   // Volume individual que EU escolhi pra ouvir cada participante (local,
   // não afeta o que os outros ouvem) — 0-100, 100 é o padrão.
   participantVolumes: {},

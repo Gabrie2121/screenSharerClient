@@ -8,13 +8,22 @@ import { getVoiceAudioContext } from './audio-context.js'
 ═══════════════════════════════════════════════════════════════ */
 export const voiceAnalysers = {} // uid (ou '__self__') -> { analyser, dataArray }
 
+// Fonte do microfone local dentro do contexto de voz. Guardada pra ser
+// desconectada antes de criar a próxima: sem isso, cada troca de
+// dispositivo deixava um MediaStreamAudioSourceNode vivo pendurado no
+// contexto, todos analisando ao mesmo tempo.
+let localVoiceSource = null
+
 export function setupLocalVoiceAnalyser(stream) {
   try {
     const ctx = getVoiceAudioContext()
-    const source = ctx.createMediaStreamSource(stream)
+    if (localVoiceSource) {
+      try { localVoiceSource.disconnect() } catch { /* já desconectado */ }
+    }
+    localVoiceSource = ctx.createMediaStreamSource(stream)
     const analyser = ctx.createAnalyser()
     analyser.fftSize = 512
-    source.connect(analyser) // só análise — não conecta no destino (senão ecoaria o próprio mic)
+    localVoiceSource.connect(analyser) // só análise — não conecta no destino (senão ecoaria o próprio mic)
     voiceAnalysers['__self__'] = { analyser, dataArray: new Uint8Array(analyser.fftSize) }
   } catch (err) {
     console.warn('[VAD] Falha ao configurar análise do microfone local:', err)
@@ -62,6 +71,13 @@ export function setupRemoteVoiceAnalyser(uid, stream) {
 
 export function removeVoiceAnalyser(uid) { delete voiceAnalysers[uid] }
 
+// Analisador do próprio microfone (saída da cadeia). Exposto pro medidor
+// de nível do teste de microfone reaproveitar em vez de abrir uma segunda
+// fonte sobre a mesma stream (ver startMicTest em device-settings.js).
+export function getLocalVoiceAnalyser() {
+  return voiceAnalysers['__self__']?.analyser || null
+}
+
 // Limpa todos os analisadores remotos (mantém '__self__') — usado quando o
 // WebSocket cai (ver websocket.js/onclose): as conexões de voz caem junto,
 // mas o microfone local continua capturado.
@@ -74,6 +90,10 @@ export function clearRemoteVoiceAnalysers() {
 // também é liberado.
 export function clearAllVoiceAnalysers() {
   Object.keys(voiceAnalysers).forEach(key => delete voiceAnalysers[key])
+  if (localVoiceSource) {
+    try { localVoiceSource.disconnect() } catch { /* já desconectado */ }
+    localVoiceSource = null
+  }
 }
 
 const SPEAKING_THRESHOLD = 0.02 // RMS mínimo pra considerar "falando"

@@ -1,4 +1,5 @@
 import { $ } from '../core/dom.js'
+import { iconSvg, volumeIconName } from '../core/icons.js'
 import { state, PARTICIPANT_VOLUMES_KEY, MASTER_VOLUME_KEY } from '../core/state.js'
 import { getVoiceAudioContext } from './audio-context.js'
 import { remoteVoiceSources } from './speaking-detection.js'
@@ -144,7 +145,7 @@ function updateParticipantVolIndicator(uid) {
   // Acima de 100% é amplificação de verdade (ganho > 1×, ver
   // setupVoiceAmplifier) — o ícone de megafone deixa isso visível de longe,
   // sem precisar abrir o popover pra ver o número.
-  el.textContent = vol === 0 ? '🔇' : (vol > 100 ? '📢' : '🔊')
+  el.innerHTML = iconSvg(volumeIconName(vol))
   el.title = vol === 0 ? 'Mutado — clique para ajustar' : `Volume: ${vol}% — clique para ajustar`
 }
 
@@ -192,7 +193,7 @@ export function closeParticipantVolumePopoverIfOpenFor(uid) {
 
 function updatePvMuteIcon(vol) {
   const icon = $('pv-mute-btn')
-  icon.textContent = vol === 0 ? '🔇' : (vol > 100 ? '📢' : '🔊')
+  icon.innerHTML = iconSvg(volumeIconName(vol))
   icon.classList.toggle('muted', vol === 0)
 }
 

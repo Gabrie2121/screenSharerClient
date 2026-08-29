@@ -34,7 +34,21 @@ export async function toggleWatch(uid) {
     state.watching.add(uid)
     state.connecting.add(uid)
     renderParticipants()
-    await startPeerConnection(uid)
+
+    // Se createOffer/setLocalDescription estourar, o timeout abaixo nunca
+    // chegaria a ser armado e o botão ficaria em "Conectando…" pra sempre —
+    // o mesmo sintoma que o timeout existe justamente pra evitar.
+    try {
+      await startPeerConnection(uid)
+    } catch (err) {
+      appLog('ERROR', `Falha ao iniciar conexão com ${uid}: ${err.message}`)
+      state.watching.delete(uid)
+      state.connecting.delete(uid)
+      closeWatchPeer(uid)
+      renderParticipants()
+      toast('Não foi possível iniciar a conexão. Tente assistir de novo.')
+      return
+    }
 
     // Corrige o "carregando infinito": se em N segundos nenhum track
     // chegar (offer perdida, pessoa parou de compartilhar, ICE travado),
@@ -377,7 +391,9 @@ export async function handleIceCandidate(fromId, payload) {
    quem está assistindo em qualidade automática/alta — não é simulcast, é
    só o mesmo vídeo sendo reescalado/recomprimido nessa conexão específica.
 ═══════════════════════════════════════════════════════════════ */
-const QUALITY_BITRATE_KBPS = { 360: 600, 480: 1000, 720: 2500, 1080: 4000 }
+// Teto de banda por espectador. Os saltos acompanham a área da imagem:
+// 1440p tem ~1,8x os pixels de 1080p, daí os 7 Mbps.
+const QUALITY_BITRATE_KBPS = { 360: 600, 480: 1000, 720: 2500, 1080: 4000, 1440: 7000 }
 
 export async function applyViewerQuality(viewerId, requestedHeight) {
   // Guarda o pedido ANTES de qualquer early return: ao trocar de tela em

@@ -1,4 +1,5 @@
 import { $ } from './core/dom.js'
+import { setIcon } from './core/icons.js'
 import { appLog } from './core/logger.js'
 import { toast } from './core/toast.js'
 import { state, SELF_PREVIEW_POS_KEY } from './core/state.js'
@@ -224,7 +225,7 @@ document.addEventListener('fullscreenchange', () => {
   const isFs = document.fullscreenElement === wrap
   wrap.classList.toggle('is-fullscreen', isFs)
   const btn = $('self-preview-fs')
-  btn.textContent = isFs ? '⤬' : '⛶'
+  setIcon(btn.querySelector('.icon-box'), isFs ? 'fullscreen-exit' : 'fullscreen')
   btn.title = isFs ? 'Sair da tela cheia' : 'Tela cheia'
 })
 

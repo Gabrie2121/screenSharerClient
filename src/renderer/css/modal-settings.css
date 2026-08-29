@@ -1,40 +1,79 @@
 /* ═══════════════════════════════════════════
    MODAL DE CONFIGURAÇÕES
+
+   Navegação numa coluna à esquerda em vez de abas no topo: é o formato de
+   painel de configurações de app de voz, e escala sem espremer — cabe mais
+   seção sem encolher as existentes, que era o limite das abas.
 ═══════════════════════════════════════════ */
 .modal-settings {
-  width: min(760px, calc(100vw - 48px));
-  max-height: min(760px, calc(100vh - 72px));
+  width: min(860px, calc(100vw - 48px));
+  max-height: min(680px, calc(100vh - 72px));
 }
-.settings-tabs {
+/* A casca é o único filho do .modal (que é uma coluna flex): vira ela a
+   linha com a navegação à esquerda e o conteúdo à direita. */
+.settings-shell {
   display: flex;
-  gap: 4px;
-  padding: 10px 20px 0;
-  border-bottom: 1px solid var(--border);
-  background: var(--bg2);
+  flex: 1;
+  min-height: 0;
+}
+
+.settings-nav {
+  width: 208px;
+  flex-shrink: 0;
+  background: var(--bg);
+  border-right: 1px solid var(--border2);
+  padding: 16px 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  overflow-y: auto;
+}
+.settings-nav-title {
+  padding: 0 8px 8px;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .04em;
+  color: var(--text3);
 }
 .settings-tab {
-  display: inline-flex;
+  --icon-size: 17px;
+  display: flex;
   align-items: center;
-  gap: 8px;
-  min-width: 132px;
-  justify-content: center;
-  padding: 11px 16px 12px;
+  gap: 10px;
+  width: 100%;
+  padding: 8px 10px;
   background: transparent;
   border: none;
-  border-bottom: 2px solid transparent;
+  border-radius: var(--radius-sm);
   color: var(--text2);
   font: inherit;
-  font-size: 13px;
-  font-weight: 600;
+  font-size: 14px;
+  font-weight: 500;
+  text-align: left;
   cursor: pointer;
-  transition: color .15s, border-color .15s, background .15s;
+  transition: background .12s, color .12s;
 }
-.settings-tab:hover { color: var(--text); background: var(--bg3); }
-.settings-tab.active { color: var(--accent); border-bottom-color: var(--accent); }
-.settings-tab-icon { font-size: 15px; line-height: 1; }
+.settings-tab:hover { background: var(--hover); color: var(--text); }
+.settings-tab.active { background: var(--hover2); color: var(--text); }
+
+.settings-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+.settings-main .modal-header {
+  padding: 18px 24px 12px;
+  border-bottom: 1px solid var(--border2);
+  flex-shrink: 0;
+}
 .settings-body {
-  padding: 8px 28px 24px;
+  padding: 4px 24px 24px;
   overflow-y: auto;
+  flex: 1;
+  min-height: 0;
 }
 .settings-panel { display: none; animation: settings-panel-in .18s ease-out; }
 .settings-panel.active { display: block; }
@@ -81,10 +120,22 @@
   text-align: right;
 }
 
-@media (max-width: 640px) {
+@media (max-width: 720px) {
   .modal-settings { width: calc(100vw - 24px); max-height: calc(100vh - 52px); }
-  .settings-tabs { padding-left: 12px; padding-right: 12px; }
-  .settings-tab { flex: 1; min-width: 0; }
+  /* Coluna lateral não cabe numa janela estreita: a navegação volta a ser
+     uma faixa horizontal rolável no topo. */
+  .settings-shell { flex-direction: column; }
+  .settings-nav {
+    width: auto;
+    flex-direction: row;
+    overflow-x: auto;
+    border-right: none;
+    border-bottom: 1px solid var(--border2);
+    padding: 8px;
+  }
+  .settings-nav-title { display: none; }
+  .settings-tab { width: auto; white-space: nowrap; }
+  .settings-main .modal-header { padding: 14px 16px 10px; }
   .settings-body { padding-left: 16px; padding-right: 16px; }
   .settings-row { align-items: flex-start; }
   .settings-row > .quality-select-inline { width: 150px; }
@@ -135,7 +186,7 @@
   transition: transform .15s, background .15s;
 }
 .toggle-switch input:checked + .toggle-slider {
-  background: rgba(79,142,247,.25);
+  background: var(--accent-soft2);
   border-color: var(--accent);
 }
 .toggle-switch input:checked + .toggle-slider::before {
@@ -173,6 +224,17 @@
   word-break: break-all;
   user-select: text;
 }
+/* Resultado do teste de áudio do sistema — cor conta o desfecho de longe,
+   e o texto quebra em várias linhas (traz o caminho no Windows). */
+#system-audio-result {
+  white-space: pre-wrap;
+  line-height: 1.5;
+  word-break: normal;
+}
+#system-audio-result[data-resultado="ok"]    { color: var(--green); border-color: rgba(35,165,90,.4); }
+#system-audio-result[data-resultado="aviso"] { color: var(--amber); }
+#system-audio-result[data-resultado="erro"]  { color: var(--text2); border-color: var(--red-border); }
+
 .log-actions {
   display: flex;
   gap: 8px;

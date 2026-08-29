@@ -21,7 +21,7 @@ import {
   handleCamOffer, handleCamAnswer, handleCamIceCandidate,
   offerCameraTo, cleanupCameraForUser, playCameraSound, reannounceCamera,
 } from './webrtc/camera.js'
-import { renderCameraStrip } from './camera-strip.js'
+import { renderCameraTiles } from './camera-tiles.js'
 import { clearRemoteVoiceAnalysers } from './voice/speaking-detection.js'
 
 /* ═══════════════════════════════════════════════════════════════
@@ -92,7 +92,23 @@ export function connectWebSocket() {
     startPing()
   }
 
-  state.ws.onmessage = (event) => handleMessage(JSON.parse(event.data))
+  // handleMessage é async e ninguém aguarda o resultado: sem este catch,
+  // qualquer exceção dentro de um handler (uma negociação WebRTC que
+  // estourou, um JSON estranho) vira "unhandled rejection" — some do
+  // console em produção e não é gravada em lugar nenhum, que é o pior
+  // caso possível pra depurar uma sala que "às vezes não conecta".
+  state.ws.onmessage = (event) => {
+    let msg
+    try {
+      msg = JSON.parse(event.data)
+    } catch {
+      appLog('WARN', 'Mensagem do servidor não é JSON válido — ignorada')
+      return
+    }
+    Promise.resolve(handleMessage(msg)).catch((err) => {
+      appLog('ERROR', `Falha ao tratar '${msg?.type}' do servidor: ${err.message}`)
+    })
+  }
 
   state.ws.onerror = () => {
     appLog('ERROR', `Erro de conexão WebSocket com ${url}`)
@@ -147,8 +163,7 @@ export function connectWebSocket() {
     state.camPeers = {}
     state.camViewPeers = {}
     state.camStreams = {}
-    state.stagedCamId = null
-    renderCameraStrip()
+    renderCameraTiles()
     // O microfone continua capturado (não precisa pedir permissão de novo
     // ao reconectar) — só as conexões de voz com cada participante caem,
     // e são refeitas quando a sala reenviar 'room-info' (ver initVoiceChat).

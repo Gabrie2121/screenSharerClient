@@ -1,0 +1,7 @@
+{
+  "name": "sharesync-process-audio",
+  "version": "1.0.0",
+  "private": true,
+  "main": "index.js",
+  "gypfile": true
+}

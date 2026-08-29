@@ -4,6 +4,7 @@ const { createWindow, getMainWindow, setQuitting } = require('./main/window.js')
 const { createTray } = require('./main/tray.js')
 require('./main/updater.js')
 require('./main/ipc.js')
+require('./main/system-audio.js')
 
 /* ═══════════════════════════════════════════════════════════════
    ShareSync — processo principal (entry point)

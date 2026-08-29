@@ -12,7 +12,7 @@
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   padding: 10px 12px;
-  box-shadow: 0 8px 24px rgba(0,0,0,.4);
+  box-shadow: var(--shadow);
   cursor: default;
 }
 .participant-volume-popover.hidden { display: none; }
@@ -26,6 +26,9 @@
   text-overflow: ellipsis;
 }
 .pv-row { display: flex; align-items: center; gap: 8px; }
+/* Mesmo botão de volume dos cards de stream (.vol-icon), só que aqui ele
+   não fica sobre vídeo — a caixa pode ser menor. */
+.pv-row .vol-icon { --icon-size: 16px; width: 28px; height: 28px; }
 .pv-row .vol-slider { flex: 1; }
 .pv-row output {
   min-width: 36px;

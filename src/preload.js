@@ -23,6 +23,19 @@ contextBridge.exposeInMainWorld('electronAPI', {
   openLogs:   () => ipcRenderer.invoke('open-logs'),
   toggleDevTools: () => ipcRenderer.send('toggle-devtools'),
 
+  // Áudio do sistema SEM o próprio app (módulo nativo — ver
+  // main/system-audio.js). Os blocos chegam por evento; a função devolvida
+  // por onSystemAudioChunk remove o ouvinte, senão duas capturas seguidas
+  // deixariam dois ouvintes somando o mesmo áudio.
+  systemAudioSupported: () => ipcRenderer.invoke('system-audio-supported'),
+  systemAudioStart:     () => ipcRenderer.invoke('system-audio-start'),
+  systemAudioStop:      () => ipcRenderer.send('system-audio-stop'),
+  onSystemAudioChunk:   (cb) => {
+    const handler = (_e, chunk) => cb(chunk)
+    ipcRenderer.on('system-audio-chunk', handler)
+    return () => ipcRenderer.removeListener('system-audio-chunk', handler)
+  },
+
   // Auto-update
   startUpdate:          () => ipcRenderer.send('update-start'),
   installUpdate:        () => ipcRenderer.send('update-install'),

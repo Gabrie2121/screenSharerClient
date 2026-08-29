@@ -1,3 +1,47 @@
-- Supressão de ruido deixa o som muito baixo, cria um slider para configurar a intensidade da suppressão
+## Resolvidos
 
-- se eu desativar a suppresão na configuração ele desativa, e quando eu ativo denovo ele desliga o microfone e não funciona mais
+- ~~Supressão de ruído deixa o som muito baixo, cria um slider para
+  configurar a intensidade da supressão~~
+  A cadeia agora repõe o volume que o RNNoise tira (ganho de compensação
+  proporcional à intensidade + limitador) e o ganho automático do navegador
+  ficou ligado. O slider de intensidade continua existindo, mas com
+  significado novo: 100% = só o áudio filtrado, e abaixo disso parte do som
+  original volta à mistura, com crossfade de potência constante (antes os
+  dois caminhos somavam em ganho fixo e a voz "afundava" no meio do curso).
+
+- ~~Se eu desativar a supressão na configuração ele desativa, e quando eu
+  ativo de novo ele desliga o microfone e não funciona mais~~
+  Causa: `switchMicDevice` fechava o `AudioContext` inteiro ANTES de montar
+  o substituto, e `state.localMicStream` era a stream daquele contexto —
+  fechá-lo matava a track que já estava sendo enviada aos outros. Qualquer
+  falha no meio (ou o Chromium recusando mais um AudioContext, que tem
+  limite por documento) deixava a pessoa muda até reiniciar o app.
+  Agora o contexto e a track de saída nascem uma vez só por sessão:
+  ligar/desligar a supressão é um crossfade de ganho e trocar de microfone
+  troca só o nó de origem. Nenhum dos dois recaptura áudio nem troca a
+  track — ver o cabeçalho de `js/voice/noise-suppression.js`.
+
+- ~~Implementar um serviço que avisa quando a pessoa está mutada para os
+  outros~~
+  `mic-state` / `user-mic-state` no protocolo, `User.mic_muted` no estado da
+  sala (então quem entra depois já vê quem está mudo), ícone de microfone
+  cortado na lista de participantes e aviso no painel do próprio usuário.
+
+- ~~Ao parar de compartilhar a câmera, a imagem ficava na tela por um
+  tempo~~
+  Causa: um `ontrack` atrasado (o evento já estava a caminho quando o
+  `user-camera-off` fechou o peer) regravava a stream morta no estado e
+  recriava o tile, congelado no último quadro — que só sumia quando o ICE
+  desistia, segundos depois. O `ontrack` agora ignora eventos de uma
+  conexão que não é mais a atual daquela pessoa.
+
+- ~~Ouvir a própria voz de volta dentro do áudio da tela de quem
+  compartilha~~
+  O áudio da tela passou a vir de um módulo nativo que captura a máquina
+  inteira MENOS o próprio ShareSync (`native/process-audio`), em vez do
+  loopback do sistema. A voz do chat não entra mais na captura — não é
+  abafada depois, simplesmente não faz parte dela.
+
+## Abertos
+
+- (nada registrado no momento)

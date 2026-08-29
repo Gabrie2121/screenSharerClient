@@ -11,3 +11,8 @@ __pycache__/
 context.MD
 logs/
 *.log
+
+# Saida da compilacao do modulo nativo (native/process-audio). O .node e
+# especifico da versao do Electron e da arquitetura, e e regerado por
+# `npm run build:native` — que o `npm run build` ja chama antes de empacotar.
+native/**/build/

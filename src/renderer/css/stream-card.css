@@ -1,12 +1,16 @@
 .stream-card {
   width: 100%;
-  background: var(--bg2);
-  border: 1px solid var(--border);
+  background: #000;
+  /* Sem borda: a moldura clara em volta de cada vídeo brigava com a
+     imagem. O card se separa do fundo pelo próprio preto do vídeo e pelo
+     cabeçalho, que é a única faixa com cor. */
+  border: none;
   border-radius: var(--radius);
   overflow: hidden;
   display: flex;
   flex-direction: column;
-  max-height: calc(100vh - 80px);
+  /* O teto de altura vem do grid (--tile-h, ver css/stage.css) — antes era
+     um valor em vh que ignorava quantos tiles estavam no palco. */
   cursor: pointer;
   transition: border-color .15s;
 }
@@ -16,26 +20,59 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 6px 10px;
-  background: var(--bg3);
-  border-bottom: 1px solid var(--border);
+  gap: 8px;
+  padding: 5px 6px 5px 12px;
+  background: var(--bg2);
   flex-shrink: 0;
   transition: opacity .25s;
 }
-/* Fora da tela cheia, o cabeçalho também some depois de 5s sem o mouse se
-   mexer (ver mousemove em js/stage-layout.js) — mesma ideia do fullscreen (3s), só que
-   com um tempo maior porque aqui não está tampando o vídeo, é só limpeza
-   visual quando ninguém está mexendo em nada. */
-.streams-grid.headers-hidden .stream-card:not(:fullscreen) .stream-header {
+/* No palco o cabeçalho FLUTUA sobre o vídeo (posicionado no bloco do
+   .stage-grid mais abaixo), então some depois de 5s sem o mouse se mexer
+   (ver mousemove em js/stage-layout.js) pra não ficar tampando a imagem —
+   mesma ideia do fullscreen, com um tempo maior por ser menos intrusivo. */
+.stage-grid.headers-hidden .stream-card:not(:fullscreen) .stream-header {
   opacity: 0;
   pointer-events: none;
 }
+/* No grid do palco o cabeçalho é uma sobreposição no topo do vídeo, e não
+   uma faixa acima dele: assim o card inteiro é uma caixa 16:9 e alinha com
+   os tiles de câmera ao lado (ver css/stage.css). O degradê é o que mantém
+   o nome legível sobre qualquer imagem. */
+.stage-grid > .stream-card > .stream-header {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 2;
+  padding: 7px 7px 22px;
+  background: linear-gradient(to bottom, rgba(0,0,0,.72), transparent);
+}
+.stage-grid > .stream-card > .stream-video-wrap {
+  aspect-ratio: auto;
+  height: 100%;
+}
+.stage-grid > .stream-card .stream-name { color: #fff; text-shadow: 0 1px 3px rgba(0,0,0,.8); }
+.stage-grid > .stream-card .stream-stats { color: rgba(255,255,255,.72); }
+/* Sobre vídeo, controle sem fundo próprio some — os do cabeçalho ganham a
+   mesma pílula escura que já usam na tela cheia. */
+.stage-grid > .stream-card .quality-select,
+.stage-grid > .stream-card .vol-icon,
+.stage-grid > .stream-card .fullscreen-btn,
+.stage-grid > .stream-card .pip-btn {
+  background: rgba(0,0,0,.45);
+  color: #fff;
+}
+.stage-grid > .stream-card .quality-select:hover,
+.stage-grid > .stream-card .vol-icon:hover,
+.stage-grid > .stream-card .fullscreen-btn:hover,
+.stage-grid > .stream-card .pip-btn:hover { background: rgba(0,0,0,.7); }
+
 /* min-width:0 + overflow/ellipsis: trunca o nome antes de espremer os
    botões, num card estreito com nome comprido + 4 controles no cabeçalho */
 .stream-name {
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 600;
-  color: var(--text2);
+  color: var(--text);
   display: flex;
   align-items: center;
   gap: 6px;
@@ -64,7 +101,7 @@
 .stream-stats {
   font-size: 10px;
   font-family: var(--mono);
-  color: var(--green);
+  color: var(--text3);
   white-space: nowrap;
 }
 /* Picture-in-Picture (abre a stream numa janela flutuante do SO) e Tela
@@ -75,46 +112,43 @@
 .pip-btn,
 .fullscreen-btn,
 .vol-icon {
+  --icon-size: 18px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   width: 32px;
   height: 32px;
-  background: var(--bg2);
-  border: 1px solid var(--border);
-  color: #fff;
-  font-size: 18px;
+  background: transparent;
+  border: none;
+  color: var(--text2);
   line-height: 1;
   padding: 0;
   border-radius: var(--radius-sm);
   cursor: pointer;
-  transition: all .15s;
+  transition: background .12s, color .12s;
 }
-.pip-btn svg { width: 18px; height: 18px; }
 .pip-btn:hover,
 .fullscreen-btn:hover,
-.vol-icon:hover { border-color: var(--accent); color: var(--accent); }
-.pip-btn:hover,
-.fullscreen-btn:hover { transform: scale(1.05); }
-.pip-btn.active { border-color: var(--accent); color: var(--accent); }
+.vol-icon:hover { background: var(--hover2); color: var(--text); }
+.pip-btn.active { color: var(--accent); background: var(--accent-soft); }
 .vol-icon.muted { opacity: .75; }
 .vol-icon:disabled { cursor: default; opacity: .4; }
-.vol-icon:disabled:hover { border-color: var(--border); color: #fff; }
+.vol-icon:disabled:hover { background: transparent; color: var(--text2); }
 /* Largura livre (tem texto de tamanho variável — "Automática" etc.), mas
    mesma altura dos botões de ícone ao lado. */
 .quality-select {
   height: 32px;
-  background: var(--bg2);
-  border: 1px solid var(--border);
-  color: #fff;
+  background: var(--bg3);
+  border: none;
+  color: var(--text2);
   font-family: var(--font);
-  font-size: 13px;
+  font-size: 12px;
   padding: 0 8px;
   border-radius: var(--radius-sm);
   cursor: pointer;
-  transition: all .15s;
+  transition: background .12s, color .12s;
 }
-.quality-select:hover { border-color: var(--accent); color: var(--accent); }
+.quality-select:hover { background: var(--bg4); color: var(--text); }
 
 /* Volume — passar o mouse já mostra o slider (sem precisar clicar);
    clicar no ícone muta/desmuta direto (ver JS). A porcentagem some com o
@@ -131,7 +165,7 @@
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   padding: 10px 12px;
-  box-shadow: 0 8px 24px rgba(0,0,0,.4);
+  box-shadow: var(--shadow);
   cursor: default;
   opacity: 0;
   pointer-events: none;
@@ -184,7 +218,7 @@
    vídeo — a pessoa pode estar compartilhando algo fora de 16:9), então
    volta ao comportamento antigo: preenche o espaço disponível e deixa o
    `object-fit: contain` cuidar de eventuais barras. */
-.streams-grid.has-focus .stream-card .stream-video-wrap {
+.stage-grid.has-focus .stream-card .stream-video-wrap {
   aspect-ratio: auto;
   flex: 1;
 }
@@ -232,21 +266,23 @@
    sozinho sem contraste quase não dava pra ver. Volume e qualidade agora
    moraram pro cabeçalho junto com PiP/tela cheia (não tem mais barra
    separada embaixo, então não corta mais nada). */
+/* Em cima de vídeo, ícone sozinho sem contraste quase não aparece — daí o
+   fundo escurecido e a borda clara só na tela cheia. */
 .stream-card:fullscreen .pip-btn,
 .stream-card:fullscreen .fullscreen-btn,
 .stream-card:fullscreen .vol-icon {
+  --icon-size: 20px;
   width: 38px;
   height: 38px;
-  font-size: 20px;
-  background: rgba(15,17,23,.7);
+  color: #fff;
+  background: rgba(20,21,24,.72);
   border: 1px solid rgba(255,255,255,.18);
   box-shadow: 0 2px 10px rgba(0,0,0,.4);
 }
-.stream-card:fullscreen .pip-btn svg { width: 20px; height: 20px; }
 .stream-card:fullscreen .quality-select {
   height: 38px;
   font-size: 14px;
-  background: rgba(15,17,23,.7);
+  background: rgba(20,21,24,.72);
   border: 1px solid rgba(255,255,255,.18);
   box-shadow: 0 2px 10px rgba(0,0,0,.4);
 }
@@ -255,7 +291,7 @@
 .stream-card:fullscreen .vol-icon:hover,
 .stream-card:fullscreen .quality-select:hover {
   border-color: var(--accent);
-  transform: none;
+  background: rgba(20,21,24,.9);
 }
 /* Some depois de 3s sem o mouse se mexer (ver mousemove em js/stage-layout.js) */
 .stream-card:fullscreen.controls-hidden .stream-header {
@@ -272,7 +308,7 @@
   align-items: center;
   justify-content: center;
   gap: 10px;
-  background: rgba(15, 17, 23, .85);
+  background: rgba(0,0,0,.7);
   color: var(--text2);
   font-size: 12px;
 }

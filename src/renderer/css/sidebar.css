@@ -1,81 +1,394 @@
 /* ═══════════════════════════════════════════
-   SALA
+   SALA — SIDEBAR
+
+   Leitura de cima pra baixo, como num app de voz: onde eu estou (código da
+   sala), quem está aqui (participantes) e, no rodapé, o meu estado — a
+   conexão de voz, o que dá pra transmitir e eu mesmo.
 ═══════════════════════════════════════════ */
 #screen-room { display: none; flex-direction: row; }
 #screen-room.active { display: flex; }
 
-/* SIDEBAR */
 .sidebar {
-  width: 290px; /* 264px + 10% (240px original, já eram dois +10% acumulados) */
+  width: 264px;
   flex-shrink: 0;
   background: var(--bg2);
-  border-right: 1px solid var(--border);
+  border-right: 1px solid var(--border2);
   display: flex;
   flex-direction: column;
+  min-height: 0;
 }
+
+/* ── Cabeçalho: código da sala ── */
 .sidebar-header {
-  padding: 16px;
-  border-bottom: 1px solid var(--border);
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--border2);
+  flex-shrink: 0;
 }
-.room-label { font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: var(--text3); }
+.room-label {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: .04em;
+  font-weight: 700;
+  color: var(--text3);
+}
 .room-id-box {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 8px;
   margin-top: 6px;
   background: var(--bg3);
-  border: 1px solid var(--border);
+  border: 1px solid var(--border2);
   border-radius: var(--radius-sm);
-  padding: 4px 8px; /* mais enxuto ainda (era 5px/10px, antes disso 7px/10px) */
+  padding: 5px 6px 5px 10px;
 }
 #display-room-id {
   font-family: var(--mono);
-  font-size: 13px; /* era 15px — acompanha o box mais baixo */
-  letter-spacing: .12em;
-  color: var(--accent);
+  font-size: 14px;
+  letter-spacing: .1em;
+  color: var(--text);
 }
-/* Botão de copiar código — mesmo tratamento (fundo/borda) dos botões do
-   cabeçalho de cada stream (PiP/tela cheia/volume), pra ficar mais
-   visível do que um ícone solto. */
 .room-id-box .icon-btn {
-  background: var(--bg2);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  padding: 4px 6px;
-  font-size: 13px;
-  color: var(--text2);
+  --icon-size: 15px;
+  padding: 5px;
+  color: var(--text3);
+  border-radius: 4px;
 }
-.room-id-box .icon-btn:hover { border-color: var(--accent); color: var(--accent); background: var(--bg2); }
+.room-id-box .icon-btn:hover { color: var(--text); background: var(--hover2); }
 
-/* PING / LATÊNCIA */
-.ping-box {
+/* ── Lista de participantes ── */
+.participants-label {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 14px 16px 6px;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: .04em;
+  font-weight: 700;
+  color: var(--text3);
+  flex-shrink: 0;
+}
+/* Contagem ao lado do rótulo (o "— 10" das listas do Discord): saber
+   quanta gente tem na sala sem precisar contar os itens. */
+.participants-count {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--text3);
+  background: var(--bg3);
+  border-radius: 999px;
+  padding: 1px 7px;
+}
+
+.participants-list {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  list-style: none;
+  padding: 0 8px 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+.participant-item {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 5px 8px;
+  border-radius: var(--radius-sm);
+  transition: background .12s;
+  cursor: pointer; /* clicar abre o popover de volume de voz (não em si mesmo) */
+}
+.participant-item:hover { background: var(--hover); }
+
+.participant-avatar {
   position: relative;
+  width: 32px; height: 32px;
+  border-radius: 50%;
+  background: var(--bg4);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+  flex-shrink: 0;
+  /* A borda é transparente e não ausente: quando o anel de "falando"
+     aparece, a caixa do avatar não muda de tamanho e a linha inteira não
+     dá aquele pulo de 2px a cada palavra. */
+  border: 2px solid transparent;
+  transition: border-color .12s;
+}
+.participant-info { flex: 1; min-width: 0; }
+.participant-name {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text2);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.participant-item:hover .participant-name { color: var(--text); }
+
+.participant-status {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+  color: var(--text3);
+  margin-top: 1px;
+}
+/* O ponto de status é ::before, não o caractere "●" no texto: como
+   caractere ele herdava a cor do texto e não dava pra pintar só ele. */
+.participant-status::before {
+  content: '';
+  width: 6px; height: 6px;
+  border-radius: 50%;
+  background: var(--text3);
+  flex-shrink: 0;
+}
+.participant-status.sharing { color: var(--green); }
+.participant-status.sharing::before { background: var(--green); }
+
+/* Falando agora (chat de voz) — anel verde no avatar, do próprio usuário
+   inclusive (ver startSpeakingLoop em js/voice/speaking-detection.js). */
+.participant-avatar.speaking {
+  border-color: var(--green);
+  box-shadow: 0 0 0 2px rgba(35,165,90,.18);
+}
+
+/* Selos à direita do nome: microfone mutado, câmera ligada e volume.
+   Só o de volume é clicável (abre o popover); os outros são informativos. */
+.participant-badges {
   display: flex;
   align-items: center;
   gap: 6px;
-  margin-top: 8px;
-  padding: 6px 10px;
-  background: var(--bg3);
-  border: 1px solid var(--border);
+  flex-shrink: 0;
+  --icon-size: 15px;
+}
+.participant-mic-indicator { color: var(--red); display: inline-flex; }
+.participant-cam-indicator { color: var(--text3); display: inline-flex; }
+.participant-vol-indicator { color: var(--text3); display: inline-flex; }
+.participant-item:hover .participant-vol-indicator { color: var(--text2); }
+
+/* Botão assistir */
+.btn-watch {
+  background: var(--bg4);
+  border: none;
+  color: var(--text2);
+  border-radius: 4px;
+  padding: 4px 9px;
+  font-size: 11px;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+  transition: background .12s, color .12s;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.btn-watch:hover { background: var(--accent); color: #fff; }
+/* Assistindo → vira "Parar de assistir" em vermelho, deixando claro que o
+   clique agora encerra a transmissão em vez de iniciar outra. */
+.btn-watch.watching { background: var(--red-soft); color: var(--red); }
+.btn-watch.watching:hover { background: var(--red); color: #fff; }
+/* Negociação WebRTC em andamento — visual distinto de "watching" (que já
+   virou antes da hora, confundindo com um clique de "tentar de novo" e
+   cancelando bem na hora em que o vídeo ia chegar). */
+.btn-watch.connecting {
+  background: transparent;
+  box-shadow: inset 0 0 0 1px var(--border);
+  color: var(--text3);
+}
+
+/* ═══════════════════════════════════════════
+   RODAPÉ — três blocos: estado da voz, ações de transmissão, e você
+═══════════════════════════════════════════ */
+.sidebar-footer {
+  flex-shrink: 0;
+  border-top: 1px solid var(--border2);
+  background: var(--bg2);
+}
+
+/* ── Voz conectada + latência + desligar ── */
+.voice-status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 8px 8px 12px;
+  background: var(--bg);
+}
+.voice-status-text { flex: 1; min-width: 0; }
+.voice-status-title {
+  display: block;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--green);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Sair da sala — ícone de desligar, à direita do estado da conexão, como
+   num painel de chamada. Era um botão de largura inteira com o texto
+   "Sair da sala"; ali ele competia em peso com compartilhar tela, que é a
+   ação que a pessoa realmente vai usar o tempo todo. */
+.btn-leave {
+  --icon-size: 19px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  background: transparent;
+  border: none;
   border-radius: var(--radius-sm);
+  color: var(--text2);
+  cursor: pointer;
+  transition: background .12s, color .12s;
+  flex-shrink: 0;
+}
+.btn-leave:hover { background: var(--red-soft); color: var(--red); }
+
+/* ── Ações de transmissão ── */
+.share-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  padding: 8px;
+}
+.action-btn {
+  --icon-size: 19px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  height: 38px;
+  padding: 0 10px;
+  background: var(--bg3);
+  border: none;
+  border-radius: var(--radius-sm);
+  color: var(--text2);
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background .12s, color .12s;
+}
+.action-btn:hover { background: var(--bg4); color: var(--text); }
+.action-label {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Transmitindo/câmera ligada — estado "no ar", em verde nos dois. O
+   vermelho ficou reservado pra desligar/sair: um botão que a pessoa vai
+   apertar de novo pra trocar de tela (ver updateModalMode em
+   webrtc/capture.js) não deve parecer um alerta. */
+.btn-share.sharing,
+.btn-camera.active {
+  background: var(--green-soft);
+  color: var(--green);
+}
+.btn-share.sharing:hover,
+.btn-camera.active:hover { background: rgba(35,165,90,.22); color: var(--green); }
+
+/* ── Painel do usuário ── */
+.user-panel {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  background: var(--bg);
+  border-top: 1px solid var(--border2);
+}
+.user-avatar {
+  width: 32px; height: 32px;
+  border-radius: 50%;
+  background: var(--accent);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  font-weight: 600;
+  flex-shrink: 0;
+}
+.user-meta { flex: 1; min-width: 0; }
+.user-name {
+  display: block;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.user-sub {
+  display: block;
+  font-size: 11px;
+  color: var(--text3);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+/* Mutado é a única informação do painel que a pessoa precisa notar sem
+   procurar — é o estado em que ela fala e ninguém ouve. */
+.user-sub.warn { color: var(--amber); }
+
+.user-btn {
+  --icon-size: 19px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-sm);
+  color: var(--text2);
+  cursor: pointer;
+  transition: background .12s, color .12s;
+  flex-shrink: 0;
+}
+.user-btn:hover { background: var(--hover2); color: var(--text); }
+/* Microfone mutado — vermelho e permanente (não só no hover): é um estado,
+   não uma ação disponível. */
+.btn-mic.muted { color: var(--red); }
+.btn-mic.muted:hover { background: var(--red-soft); color: var(--red); }
+
+/* ═══════════════════════════════════════════
+   PING / LATÊNCIA — dentro do bloco de voz conectada
+═══════════════════════════════════════════ */
+.ping-box {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 1px;
   cursor: default;
 }
 /* Detalhe ao passar o mouse — histórico/gráfico dos últimos pings (ver
-   updatePingUI em js/ping.js, que mantém isso atualizado mesmo escondido) */
+   updatePingUI em js/ping.js, que mantém isso atualizado mesmo escondido).
+   Abre pra CIMA porque o ping agora mora no rodapé: pra baixo abriria
+   fora da janela. */
 .ping-popover {
   position: absolute;
-  top: calc(100% + 6px);
+  bottom: calc(100% + 8px);
   left: 0;
   z-index: 20;
   width: 180px;
-  background: var(--bg2);
+  background: var(--bg3);
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   padding: 10px 12px;
-  box-shadow: 0 8px 24px rgba(0,0,0,.4);
+  box-shadow: var(--shadow);
   opacity: 0;
   pointer-events: none;
-  transform: translateY(-4px);
+  transform: translateY(4px);
   transition: opacity .15s, transform .15s;
 }
 .ping-box:hover .ping-popover {
@@ -100,262 +413,22 @@
   margin-top: 6px;
   color: var(--accent);
 }
-.ping-bars { display: flex; align-items: flex-end; gap: 2px; height: 12px; }
+.ping-bars { display: flex; align-items: flex-end; gap: 2px; height: 11px; }
 .ping-bars .bar { width: 3px; background: var(--text3); border-radius: 1px; transition: background .2s; }
 .ping-bars .b1 { height: 4px; }
-.ping-bars .b2 { height: 7px; }
-.ping-bars .b3 { height: 10px; }
-.ping-bars .b4 { height: 13px; }
+.ping-bars .b2 { height: 6px; }
+.ping-bars .b3 { height: 9px; }
+.ping-bars .b4 { height: 11px; }
 
 .ping-box[data-level="1"] .b1 { background: var(--red); }
 .ping-box[data-level="2"] .b1,
-.ping-box[data-level="2"] .b2 { background: #e0a55c; }
+.ping-box[data-level="2"] .b2 { background: var(--amber); }
 .ping-box[data-level="3"] .b1,
 .ping-box[data-level="3"] .b2,
-.ping-box[data-level="3"] .b3 { background: var(--accent); }
+.ping-box[data-level="3"] .b3 { background: var(--green); }
 .ping-box[data-level="4"] .b1,
 .ping-box[data-level="4"] .b2,
 .ping-box[data-level="4"] .b3,
 .ping-box[data-level="4"] .b4 { background: var(--green); }
 
-.ping-ms { font-size: 11px; color: var(--text2); font-family: var(--mono); }
-
-.participants-label {
-  padding: 12px 16px 6px;
-  font-size: 11px;
-  text-transform: uppercase;
-  letter-spacing: .08em;
-  color: var(--text3);
-}
-.participants-list {
-  flex: 1;
-  overflow-y: auto;
-  list-style: none;
-  padding: 0 8px;
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-.participant-item {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 6px 8px; /* era 8px/10px */
-  border-radius: var(--radius-sm);
-  transition: background .15s;
-  cursor: pointer; /* clicar abre o popover de volume de voz (não em si mesmo) */
-}
-/* Traço bem fraquinho entre um participante e outro (não no primeiro) */
-.participant-item + .participant-item { border-top: 1px solid rgba(255,255,255,.06); }
-.participant-item:hover { background: var(--bg3); }
-.participant-avatar {
-  width: 32px; height: 32px;
-  border-radius: 50%;
-  background: var(--bg3);
-  border: 2px solid var(--border);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 13px;
-  font-weight: 700;
-  color: var(--accent);
-  flex-shrink: 0;
-}
-.participant-info { flex: 1; min-width: 0; }
-.participant-name {
-  font-size: 13px;
-  font-weight: 500;
-  color: var(--text);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.participant-status {
-  font-size: 11px;
-  color: var(--text3);
-  margin-top: 1px;
-}
-.participant-status.sharing { color: var(--green); }
-
-/* Falando agora (chat de voz) — anel pulsante verde no avatar, tanto do
-   participante remoto quanto do próprio usuário (ver setupLocalVoiceAnalyser
-   / setupRemoteVoiceAnalyser + startSpeakingLoop em js/voice/speaking-detection.js). */
-@keyframes speaking-pulse {
-  0%, 100% { box-shadow: 0 0 0 0 rgba(62,207,142,.55); }
-  50%      { box-shadow: 0 0 0 4px rgba(62,207,142,.25); }
-}
-.participant-avatar.speaking {
-  border-color: var(--green);
-  animation: speaking-pulse 1.1s ease-in-out infinite;
-}
-
-/* Indicador de volume por participante (🔊/🔇) — clicar em qualquer parte
-   do item abre o popover de volume (ver openParticipantVolumePopover) */
-.participant-vol-indicator {
-  font-size: 13px;
-  color: var(--text3);
-  flex-shrink: 0;
-}
-
-/* Botão assistir */
-.btn-watch {
-  background: none;
-  border: 1px solid var(--border);
-  color: var(--text2);
-  border-radius: 4px;
-  padding: 3px 8px;
-  font-size: 11px;
-  cursor: pointer;
-  transition: all .15s;
-  white-space: nowrap;
-}
-.btn-watch:hover { border-color: var(--accent); color: var(--accent); }
-/* Assistindo → vira "Parar de assistir" em vermelho, deixando claro que o
-   clique agora encerra a transmissão em vez de iniciar outra. */
-.btn-watch.watching { background: rgba(224,92,92,.15); border-color: var(--red); color: var(--red); }
-.btn-watch.watching:hover { border-color: var(--red); color: var(--red); }
-/* Negociação WebRTC em andamento — visual distinto de "watching" (que já
-   virou antes da hora, confundindo com um clique de "tentar de novo" e
-   cancelando bem na hora em que o vídeo ia chegar). */
-.btn-watch.connecting { background: none; border-style: dashed; border-color: var(--text3); color: var(--text2); }
-
-/* SIDEBAR FOOTER */
-.sidebar-footer {
-  padding: 12px;
-  border-top: 1px solid var(--border);
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-/* Botão de compartilhar + botão de configurações — grid 1fr/1fr, mesmo
-   espaço pros dois (a sidebar é estreita demais pra caber texto nos dois
-   lados, por isso os dois viraram ícone puro, com o rótulo no title). */
-.share-row {
-  display: grid;
-  /* Quatro colunas desde que a câmera entrou (mic / câmera / tela /
-     configurações). Gap menor que os 8px de antes pra não espremer os
-     ícones numa sidebar estreita. */
-  grid-template-columns: repeat(4, 1fr);
-  gap: 6px;
-}
-/* Altura fixa nos 3 (não só padding igual) — com padding igual mas
-   font-size diferente (ícone grande vs texto pequeno), o conteúdo em si
-   tinha uma "linha" mais alta e os botões de ícone ficavam ~1.5x mais
-   altos que o de sair mesmo com o mesmo padding. */
-.btn-share {
-  height: 40px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  background: rgba(79,142,247,.12);
-  border: 1px solid rgba(79,142,247,.3);
-  color: var(--accent);
-  border-radius: var(--radius-sm);
-  padding: 0 10px;
-  font-size: 20px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: all .15s;
-}
-.btn-share:hover { background: rgba(79,142,247,.2); }
-.btn-share.sharing {
-  background: rgba(224,92,92,.12);
-  border-color: rgba(224,92,92,.3);
-  color: var(--red);
-}
-/* Ligar/desligar câmera — mesmo tratamento visual dos outros botões da
-   linha: azul quando disponível, verde quando a câmera está no ar (verde,
-   e não vermelho como o de compartilhar, porque câmera ligada é um estado
-   "positivo" contínuo, não um alerta de que se está transmitindo a tela). */
-.btn-camera {
-  height: 40px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: rgba(79,142,247,.12);
-  border: 1px solid rgba(79,142,247,.3);
-  color: var(--accent);
-  border-radius: var(--radius-sm);
-  padding: 0 8px;
-  font-size: 18px;
-  cursor: pointer;
-  transition: background .15s, border-color .15s;
-}
-.btn-camera:hover { background: rgba(79,142,247,.2); }
-
-/* Selinho de "câmera ligada" na lista de participantes — só informativo,
-   diferente do indicador de volume, que é clicável. */
-/* Microfone mutado — informativo, como o da câmera. Vermelho de leve pra
-   distinguir do ícone de volume ao lado, que é clicável e cinza. */
-.participant-mic-indicator {
-  font-size: 12px;
-  opacity: .9;
-  flex-shrink: 0;
-  pointer-events: none;
-  filter: saturate(1.4);
-}
-
-.participant-cam-indicator {
-  font-size: 12px;
-  opacity: .85;
-  flex-shrink: 0;
-  pointer-events: none;
-}
-.btn-camera.active {
-  background: rgba(74,190,124,.14);
-  border-color: rgba(74,190,124,.35);
-}
-
-/* Mutar/desmutar microfone — mesmo tratamento visual do botão de
-   compartilhar (azul = ativo, vermelho = "desligado"/mutado). */
-.btn-mic {
-  height: 40px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: rgba(79,142,247,.12);
-  border: 1px solid rgba(79,142,247,.3);
-  color: var(--accent);
-  border-radius: var(--radius-sm);
-  padding: 0 10px;
-  font-size: 18px;
-  cursor: pointer;
-  transition: all .15s;
-}
-.btn-mic:hover { background: rgba(79,142,247,.2); }
-.btn-mic.muted {
-  background: rgba(224,92,92,.12);
-  border-color: rgba(224,92,92,.3);
-  color: var(--red);
-}
-.btn-settings {
-  height: 40px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: var(--bg3);
-  border: 1px solid var(--border);
-  color: var(--text2);
-  border-radius: var(--radius-sm);
-  padding: 0 10px;
-  font-size: 20px;
-  cursor: pointer;
-  transition: all .15s;
-}
-.btn-settings:hover { border-color: var(--accent); color: var(--accent); }
-/* Vermelho por padrão, não só no hover, já que sair da sala é uma ação de
-   "saída". */
-.btn-leave {
-  height: 40px;
-  background: transparent;
-  border: 1px solid rgba(224,92,92,.35);
-  color: var(--red);
-  border-radius: var(--radius-sm);
-  padding: 0 10px;
-  font-size: 13px;
-  cursor: pointer;
-  transition: all .15s;
-}
-.btn-leave:hover { background: rgba(224,92,92,.12); border-color: var(--red); }
-
+.ping-ms { font-size: 11px; color: var(--text3); font-family: var(--mono); }

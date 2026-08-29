@@ -1,4 +1,5 @@
 import { $ } from './core/dom.js'
+import { iconSvg, volumeIconName } from './core/icons.js'
 import { state } from './core/state.js'
 import { toggleWatch, closeWatchPeer, closeSharePeer } from './webrtc/screen-share-peers.js'
 import { closeVoicePeer } from './voice/peers.js'
@@ -8,6 +9,22 @@ import { removeStreamCard } from './stream-cards.js'
 /* ═══════════════════════════════════════════════════════════════
    PARTICIPANTES — RENDER
 ═══════════════════════════════════════════════════════════════ */
+// Painel do usuário no rodapé da sidebar — avatar, nome e o estado atual.
+// Fica junto do render da lista porque é a mesma informação: sempre que
+// algo muda pra mim (mutar, compartilhar, ligar câmera), os dois mudam.
+function renderUserPanel() {
+  $('user-avatar').textContent = state.myName?.[0]?.toUpperCase() || '?'
+  $('user-name').textContent = state.myName || '—'
+
+  const parts = []
+  if (state.micMuted) parts.push('Microfone mutado')
+  if (state.sharing) parts.push('Transmitindo')
+  if (state.cameraOn) parts.push('Câmera ligada')
+  const sub = $('user-sub')
+  sub.textContent = parts.length ? parts.join(' · ') : 'Em voz'
+  sub.classList.toggle('warn', state.micMuted)
+}
+
 export function renderParticipants() {
   const list = $('participants-list')
   // Se a lista for reconstruída com a prévia de alguém aberta (ex.: outra
@@ -26,6 +43,9 @@ export function renderParticipants() {
     const li = makeParticipantItem(uid, u.username, u.sharing, false, u.camera, u.mic_muted)
     list.appendChild(li)
   }
+
+  $('participants-count').textContent = String(Object.keys(state.users).length + 1)
+  renderUserPanel()
 }
 
 function makeParticipantItem(uid, name, sharing, isMe, camera = false, micMuted = false) {
@@ -34,9 +54,10 @@ function makeParticipantItem(uid, name, sharing, isMe, camera = false, micMuted 
   li.dataset.uid = uid
 
   const initial = name[0]?.toUpperCase() || '?'
-  const statusText = sharing
-    ? (isMe ? '● Live' : '● Live')
-    : (isMe ? 'Você' : '● Online')
+  // O ponto colorido antes do texto é ::before no CSS (ver
+  // .participant-status) — como caractere "●" ele herdava a cor do texto e
+  // não dava pra deixar verde só no "transmitindo".
+  const statusText = sharing ? 'Transmitindo' : (isMe ? 'Você' : 'Online')
 
   const watching   = state.watching.has(uid)
   const connecting = state.connecting.has(uid)
@@ -50,11 +71,13 @@ function makeParticipantItem(uid, name, sharing, isMe, camera = false, micMuted 
       <div class="participant-name">${name}${isMe ? ' (você)' : ''}</div>
       <div class="participant-status ${sharing ? 'sharing' : ''}">${statusText}</div>
     </div>
-    ${micMuted ? '<span class="participant-mic-indicator" title="Microfone mutado">🔇</span>' : ''}
-    ${camera ? '<span class="participant-cam-indicator" title="Câmera ligada">📷</span>' : ''}
-    ${!isMe
-      ? `<span class="participant-vol-indicator" title="Volume: ${vol}% — clique para ajustar">${vol === 0 ? '🔇' : (vol > 100 ? '📢' : '🔊')}</span>`
-      : ''}
+    <div class="participant-badges">
+      ${micMuted ? `<span class="participant-mic-indicator" title="Microfone mutado">${iconSvg('mic-off')}</span>` : ''}
+      ${camera ? `<span class="participant-cam-indicator" title="Câmera ligada">${iconSvg('camera')}</span>` : ''}
+      ${!isMe
+        ? `<span class="participant-vol-indicator" title="Volume: ${vol}% — clique para ajustar">${iconSvg(volumeIconName(vol))}</span>`
+        : ''}
+    </div>
     ${(!isMe && sharing)
       ? `<button class="btn-watch ${watching ? 'watching' : ''} ${connecting ? 'connecting' : ''}" data-uid="${uid}">
            ${watchLabel}

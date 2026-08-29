@@ -2,8 +2,9 @@ import { $ } from '../core/dom.js'
 import { appLog } from '../core/logger.js'
 import { toast } from '../core/toast.js'
 import { state, SPEAKER_DEVICE_KEY } from '../core/state.js'
-import { switchMicDevice } from './mic.js'
+import { switchMicDevice, ensureLocalMicStream } from './mic.js'
 import { applyOutputDevice, applyVoiceContextOutputDevice, getVoiceAudioContext } from './audio-context.js'
+import { getLocalVoiceAnalyser } from './speaking-detection.js'
 
 /* ═══════════════════════════════════════════════════════════════
    DISPOSITIVOS DE ÁUDIO (Configurações → Áudio)
@@ -62,6 +63,8 @@ $('select-speaker').addEventListener('change', async () => {
 ═══════════════════════════════════════════════════════════════ */
 let micTestStream = null
 let micTestAnalyser = null
+let micTestSource = null
+let micTestOwnsStream = false
 let micTestRAF = null
 
 $('btn-test-mic').onclick = () => {
@@ -71,8 +74,22 @@ $('btn-test-mic').onclick = () => {
 
 async function startMicTest() {
   try {
-    const constraints = { audio: state.micDeviceId ? { deviceId: { exact: state.micDeviceId } } : true }
-    micTestStream = await navigator.mediaDevices.getUserMedia(constraints)
+    // Testa a SAÍDA da cadeia de áudio (ver voice/noise-suppression.js) —
+    // é exatamente o que os outros participantes ouvem, com supressão e
+    // ganho já aplicados. Testar a captura crua, como era antes, dava um
+    // retorno bonito e enganoso: a pessoa se ouvia bem e mesmo assim
+    // chegava filtrado demais (ou nem chegava) do outro lado.
+    const pipelineStream = await ensureLocalMicStream()
+    if (pipelineStream && state.micMuted) {
+      toast('Seu microfone está mutado — desmute para ouvir o teste.')
+    }
+    // Sem cadeia (permissão negada, Web Audio indisponível) o teste ainda
+    // vale como "meu microfone chega em algum lugar?": cai na captura crua.
+    micTestStream = pipelineStream
+      || await navigator.mediaDevices.getUserMedia({ audio: state.micDeviceId ? { deviceId: { exact: state.micDeviceId } } : true })
+    // Só paramos a captura no stop se ela foi criada AQUI — parar a stream
+    // da cadeia deixaria a pessoa muda na sala inteira.
+    micTestOwnsStream = micTestStream !== pipelineStream
 
     const audioEl = $('mic-test-audio')
     audioEl.srcObject = micTestStream
@@ -85,11 +102,21 @@ async function startMicTest() {
     await applyOutputDevice(audioEl)
     await audioEl.play().catch(() => {})
 
-    const ctx = getVoiceAudioContext()
-    const source = ctx.createMediaStreamSource(micTestStream)
-    micTestAnalyser = ctx.createAnalyser()
-    micTestAnalyser.fftSize = 256
-    source.connect(micTestAnalyser)
+    // Duas MediaStreamAudioSourceNode sobre a MESMA stream no mesmo
+    // contexto é instável no Chromium (a segunda fica muda em vez de dar
+    // erro — ver getRemoteVoiceSource em speaking-detection.js). Como a
+    // stream da cadeia já tem uma fonte viva, a do analisador local, o
+    // medidor reaproveita aquele analisador em vez de abrir outro.
+    micTestAnalyser = getLocalVoiceAnalyser()
+    if (!micTestAnalyser) {
+      const ctx = getVoiceAudioContext()
+      // Guardado pra ser desconectado no stopMicTest — sem isso cada teste
+      // deixava mais uma fonte pendurada no contexto de voz.
+      micTestSource = ctx.createMediaStreamSource(micTestStream)
+      micTestAnalyser = ctx.createAnalyser()
+      micTestAnalyser.fftSize = 256
+      micTestSource.connect(micTestAnalyser)
+    }
 
     $('btn-test-mic').textContent = 'Parar teste'
     $('mic-test-meter').classList.remove('hidden')
@@ -118,7 +145,12 @@ export function stopMicTest() {
   cancelAnimationFrame(micTestRAF)
   micTestRAF = null
   micTestAnalyser = null
-  micTestStream?.getTracks().forEach(t => t.stop())
+  if (micTestSource) {
+    try { micTestSource.disconnect() } catch { /* já desconectado */ }
+    micTestSource = null
+  }
+  if (micTestOwnsStream) micTestStream?.getTracks().forEach(t => t.stop())
+  micTestOwnsStream = false
   micTestStream = null
 
   const audioEl = $('mic-test-audio')

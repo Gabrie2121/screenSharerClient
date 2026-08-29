@@ -21,6 +21,7 @@ import './core/logger.js'
 import './core/toast.js'
 import './core/ice-config.js'
 import './core/ice-debug.js'
+import { renderIcons } from './core/icons.js'
 
 // Janela + tela de login
 import './titlebar.js'
@@ -45,12 +46,13 @@ import './webrtc/capture.js'
 // automático ao minimizar — o auto-pip depende do self-preview pra poder
 // cair na própria tela quando não se está assistindo ninguém.
 import './self-preview.js'
+import './self-tile.js'
 import './auto-pip.js'
 
 // Câmera (webcam) — mapas de peers próprios, ver o cabeçalho de
 // webrtc/camera.js pra QUEM oferta e por que não dá pra reusar os mapas
 // de tela ou de voz.
-import './camera-strip.js'
+import './camera-tiles.js'
 import './webrtc/camera.js'
 
 // Chat de voz
@@ -64,3 +66,14 @@ import './voice/device-settings.js'
 
 // Modal de configurações (autovisualização, qualidade padrão, tabs)
 import './settings-modal.js'
+import './system-audio-test.js'
+
+/* ═══════════════════════════════════════════════════════════════
+   Preenche os ícones SVG de todo [data-icon] do index.html (ver
+   core/icons.js). Fica no fim do arquivo, mas `import` é hoisted: isso
+   roda depois de TODOS os módulos acima terem sido carregados e
+   registrado seus listeners — e antes de qualquer interação, que é o que
+   importa. Markup criado em runtime (cards de stream, participantes,
+   tiles de câmera) chama renderIcons no próprio nó recém-criado.
+═══════════════════════════════════════════════════════════════ */
+renderIcons()

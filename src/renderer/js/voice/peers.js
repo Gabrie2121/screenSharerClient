@@ -9,6 +9,7 @@ import {
   removeRemoteVoiceSource, updateSpeakingIndicators,
 } from './speaking-detection.js'
 import { applyOutputDevice } from './audio-context.js'
+import { startShareAudioDuck } from '../share-audio-duck.js'
 import { removeVoiceAmplifier, applyVoiceVolume } from './volume.js'
 
 /* ══════════════════════════════════════════════════════════════
@@ -29,6 +30,8 @@ export async function initVoiceChat() {
   await ensureLocalMicStream()
   applyMicMuteState()
   startSpeakingLoop()
+  // O ducking depende de quem está falando, então acompanha esse mesmo loop.
+  startShareAudioDuck()
   for (const uid of Object.keys(state.users)) {
     if (!state.voicePeers[uid]) startVoicePeerConnection(uid)
   }

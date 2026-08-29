@@ -1,33 +1,64 @@
 /* ═══════════════════════════════════════════
    TOKENS
+
+   A paleta é a família de cinzas neutros de apps de voz tipo Discord —
+   antes era azulada (#0f1117/#161b27/#1e2535), o que dava um tom "azul
+   escuro" em tudo e brigava com o azul do próprio destaque. Cinza neutro
+   deixa o destaque ser a única cor saturada da tela, e o vídeo (que é o
+   conteúdo de verdade) aparecer sem competir com o fundo.
+
+   Escala de superfícies, da mais funda pra mais alta:
+     --bg    palco / área de vídeo (mais escuro: encosta no preto do vídeo)
+     --bg2   sidebar, modais, cabeçalhos
+     --bg3   campos, botões secundários, itens "levantados"
+     --bg4   hover de item levantado
 ═══════════════════════════════════════════ */
 :root {
-  --bg:        #0f1117;
-  --bg2:       #161b27;
-  --bg3:       #1e2535;
-  --border:    #2a3347;
-  --accent:    #4f8ef7;
-  --accent2:   #3a6fd8;
-  --green:     #3ecf8e;
-  --red:       #e05c5c;
-  --text:      #e8eaf0;
-  --text2:     #8b93a8;
-  --text3:     #525d75;
-  --radius:    10px;
+  --bg:        #1a1b1e;
+  --bg2:       #232428;
+  --bg3:       #2b2d31;
+  --bg4:       #35373c;
+  --border:    #3a3c42;
+  --border2:   #2a2c31;
+
+  --accent:    #5865f2;
+  --accent2:   #4752c4;
+  /* Fundos/bordas derivados do destaque — antes eram rgba(79,142,247,…)
+     repetidos em seis arquivos, então mudar o destaque não mudava nada. */
+  --accent-soft:   rgba(88,101,242,.15);
+  --accent-soft2:  rgba(88,101,242,.25);
+  --accent-border: rgba(88,101,242,.4);
+
+  --green:      #23a55a;
+  --green-soft: rgba(35,165,90,.15);
+  --red:        #ed4245;
+  --red-soft:   rgba(237,66,69,.14);
+  --red-border: rgba(237,66,69,.4);
+  --amber:      #f0b232;
+
+  --text:      #f2f3f5;
+  --text2:     #b5bac1;
+  /* Medido: #80848e sobre --bg3 dava 3.7:1, abaixo do mínimo legível pra
+     texto pequeno — e é justamente a cor das dicas de 11px embaixo de cada
+     opção das configurações. #949ba4 sobe pra ~5.3:1. */
+  --text3:     #949ba4;
+
+  /* Realce sutil sobre qualquer superfície (hover de lista, separadores) —
+     transparente de propósito: funciona sobre qualquer um dos --bg. */
+  --hover:     rgba(255,255,255,.04);
+  --hover2:    rgba(255,255,255,.07);
+
+  --radius:    8px;
   --radius-sm: 6px;
-  --font:      'Segoe UI', system-ui, sans-serif;
+  --radius-lg: 12px;
+
+  --shadow:    0 8px 24px rgba(0,0,0,.45);
+  --shadow-lg: 0 12px 40px rgba(0,0,0,.55);
+
+  --font:      'gg sans', 'Segoe UI', system-ui, sans-serif;
   --mono:      'Cascadia Code', 'Fira Mono', monospace;
+
+  /* Altura da barra de título — usada pelo cálculo de altura das telas
+     (.screen), que antes repetia o número 38px cru. */
+  --titlebar-h: 38px;
 }
-
-*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-
-html, body {
-  height: 100%;
-  background: var(--bg);
-  color: var(--text);
-  font-family: var(--font);
-  font-size: 14px;
-  overflow: hidden;
-  user-select: none;
-}
-

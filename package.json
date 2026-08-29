@@ -1,6 +1,5 @@
 {
   "name": "screen-share-electron",
-
   "version": "0.2.4",
   "author": {
     "name": "Gabriel Miranda",
@@ -10,11 +9,13 @@
   "main": "src/main.js",
   "scripts": {
     "start": "electron .",
-    "build": "electron-builder build --win",
-    "release": "electron-builder build --win --publish always",
+    "check": "node scripts/check.js",
+    "build": "npm run build:native && electron-builder build --win",
+    "release": "npm run build:native && electron-builder build --win --publish always",
     "release:dev": "electron-builder build --win --publish always --config.publish.releaseType=prerelease && node scripts/publish-dev-bridge.js",
     "release:linux": "electron-builder build --linux rpm --publish always",
-    "version:dev": "npm version prerelease --preid=dev --no-git-tag-version"
+    "version:dev": "npm version prerelease --preid=dev --no-git-tag-version",
+    "build:native": "node scripts/build-native.js"
   },
   "build": {
     "appId": "com.sharesync.app",
@@ -43,11 +44,22 @@
       "provider": "github",
       "owner": "Gabrie2121",
       "repo": "screenSharerClient"
-    }
+    },
+    "files": [
+      "**/*",
+      "!native/process-audio/build/**/*",
+      "!native/process-audio/src/**/*",
+      "native/process-audio/build/Release/process_audio.node"
+    ],
+    "asarUnpack": [
+      "native/process-audio/build/Release/*.node"
+    ]
   },
   "devDependencies": {
+    "@electron/rebuild": "^4.2.0",
     "electron": "^30.0.0",
-    "electron-builder": "^24.0.0"
+    "electron-builder": "^24.0.0",
+    "node-addon-api": "^8.9.2"
   },
   "dependencies": {
     "@sapphi-red/web-noise-suppressor": "^0.4.0",

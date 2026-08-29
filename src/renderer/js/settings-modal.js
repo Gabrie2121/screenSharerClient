@@ -3,12 +3,16 @@ import { toast } from './core/toast.js'
 import {
   state, SELF_PREVIEW_KEY, DEFAULT_WATCH_QUALITY_KEY, AUTO_PIP_KEY,
   SOUNDS_ENABLED_KEY, SOUNDS_VOLUME_KEY,
+  SHOW_SELF_SCREEN_KEY, SHOW_SELF_CAMERA_KEY,
+  DUCK_ENABLED_KEY, DUCK_AMOUNT_KEY,
 } from './core/state.js'
 import { previewSound } from './core/sounds.js'
 import { populateCameraSelect } from './webrtc/camera.js'
 import { setPipSource } from './auto-pip.js'
 import { populateAudioDeviceSelects, stopMicTest } from './voice/device-settings.js'
 import { updateSelfPreview } from './self-preview.js'
+import { renderSelfTile } from './self-tile.js'
+import { renderCameraTiles } from './camera-tiles.js'
 
 /* ═══════════════════════════════════════════════════════════════
    CONFIGURAÇÕES — modal com opções por seção (Áudio/Vídeo).
@@ -46,11 +50,36 @@ document.querySelectorAll('.settings-tab').forEach((tab) => {
       panel.classList.toggle('active', isActive)
       panel.hidden = !isActive
     })
+    // Com a navegação numa coluna à esquerda, o título do painel é o que
+    // diz onde a pessoa está — a aba selecionada sozinha some de vista
+    // quando a lista cresce.
+    $('settings-title').textContent = tab.dataset.settingsLabel || 'Configurações'
   }
 })
 
-// Autovisualização — opcional, canto inferior direito, sempre mudo.
-// Preferência salva em localStorage e usada como padrão dali pra frente.
+/* ═══════════════════════════════════════════════════════════════
+   O QUE APARECE DE MIM NO PALCO
+   Nenhum dos dois muda o que sai pra rede — são só o meu tile no grid.
+   Ligados por padrão: o normal é querer se ver enquanto transmite.
+═══════════════════════════════════════════════════════════════ */
+const chkSelfScreen = $('chk-self-screen')
+chkSelfScreen.checked = state.showSelfScreen
+chkSelfScreen.onchange = () => {
+  state.showSelfScreen = chkSelfScreen.checked
+  localStorage.setItem(SHOW_SELF_SCREEN_KEY, String(state.showSelfScreen))
+  renderSelfTile()
+}
+
+const chkSelfCamera = $('chk-self-camera')
+chkSelfCamera.checked = state.showSelfCamera
+chkSelfCamera.onchange = () => {
+  state.showSelfCamera = chkSelfCamera.checked
+  localStorage.setItem(SHOW_SELF_CAMERA_KEY, String(state.showSelfCamera))
+  renderCameraTiles()
+}
+
+// Prévia FLUTUANTE da própria tela — janelinha por cima da interface, à
+// parte do palco. Preferência salva em localStorage.
 const chkSelfPreview = $('chk-self-preview')
 chkSelfPreview.checked = state.showSelfPreview
 
@@ -58,6 +87,28 @@ chkSelfPreview.onchange = () => {
   state.showSelfPreview = chkSelfPreview.checked
   localStorage.setItem(SELF_PREVIEW_KEY, String(state.showSelfPreview))
   updateSelfPreview()
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   ABAIXAR A TRANSMISSÃO ENQUANTO ALGUÉM FALA
+   Ver o cabeçalho de js/share-audio-duck.js: é o que impede a própria voz
+   de voltar dentro do áudio da tela de quem compartilha.
+═══════════════════════════════════════════════════════════════ */
+const chkDuck = $('chk-duck')
+chkDuck.checked = state.duckWhileTalking
+chkDuck.onchange = () => {
+  state.duckWhileTalking = chkDuck.checked
+  localStorage.setItem(DUCK_ENABLED_KEY, String(state.duckWhileTalking))
+}
+
+const duckSlider = $('duck-amount-slider')
+const duckValue = $('duck-amount-value')
+duckSlider.value = state.duckAmount
+duckValue.textContent = `${state.duckAmount}%`
+duckSlider.oninput = () => {
+  state.duckAmount = Number(duckSlider.value)
+  duckValue.textContent = `${state.duckAmount}%`
+  localStorage.setItem(DUCK_AMOUNT_KEY, String(state.duckAmount))
 }
 
 /* ═══════════════════════════════════════════════════════════════
