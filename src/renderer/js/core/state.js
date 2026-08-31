@@ -43,6 +43,12 @@ export const DUCK_AMOUNT_KEY = 'sharesync:duck-amount'
 export const SOUNDS_ENABLED_KEY = 'sharesync:sounds-enabled'
 export const SOUNDS_VOLUME_KEY = 'sharesync:sounds-volume'
 
+// Chat temporário da sala — só o painel aberto/fechado persiste. As
+// mensagens NÃO: a conversa vive no servidor e morre com a sala (ver
+// core/chat_manager.py no backend). Guardá-las aqui faria o app mostrar
+// um histórico que já não existe mais pra ninguém.
+export const CHAT_OPEN_KEY = 'sharesync:chat-open'
+
 // Login — últimos nome/servidor/sala usados, pra preencher os campos
 // sozinho na próxima vez que o app abrir (ver js/login.js).
 export const LAST_NAME_KEY = 'sharesync:last-name'
@@ -223,4 +229,28 @@ export const state = {
   // Preenchido por detecção local de volume (ver startSpeakingLoop),
   // nenhuma mensagem nova de WebSocket é necessária pra isso.
   speaking: new Set(),
+
+  /* ── CHAT TEMPORÁRIO DA SALA ──
+     A conversa começa quando alguém entra na sala (que é o mesmo que
+     entrar na voz aqui: quem está na sala já está no áudio) e o servidor
+     a apaga alguns minutos depois de a sala ficar vazia. Ver
+     js/chat/chat.js e, no backend, core/chat_manager.py.
+
+     A ORDEM é sempre a do servidor: mesmo a própria mensagem só entra
+     nesta lista quando volta do eco (ver o comentário de CHAT_MSG em
+     routes/ws.py). Sem isso, duas pessoas escrevendo ao mesmo tempo
+     veriam a conversa em ordens diferentes. */
+  chatOpen: localStorage.getItem(CHAT_OPEN_KEY) === 'true',
+  // [{ id, user_id, username, text, attachments, ts }] — como veio do servidor
+  chatMessages: [],
+  // Quantas chegaram com o painel fechado (selo no botão do palco).
+  chatUnread: 0,
+  // Anexos JÁ enviados ao servidor e esperando a mensagem que os leva —
+  // é o que aparece na bandeja acima do campo de texto. Enquanto `file_id`
+  // for null, aquele item ainda está subindo.
+  chatDrafts: [],
+  // { userId: { username, timer } } — quem está digitando agora. O aviso
+  // se apaga sozinho por relógio local: se a pessoa fechar o app no meio
+  // de uma frase, o "parou de digitar" nunca chegaria.
+  chatTyping: {},
 }

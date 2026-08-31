@@ -35,6 +35,10 @@ const SOUNDS = {
   // do resto. Alguns segundos depois a pessoa já está de fato te vendo — que
   // é a informação que importa.
   'viewer-joined': { src: '../../../assets/sounds/viewer-joined.mp3', cut: 1500 },
+  // Mensagem nova no chat da sala, e só com o painel FECHADO (ver
+  // receiveChatMessage em js/chat/chat.js) — com ele aberto a mensagem já
+  // está à vista e o som viraria ruído a cada linha digitada.
+  'chat-message': { src: '../../../assets/sounds/chat-message.mp3', cut: 700 },
 }
 
 // { nome: { audio, cut, cutTimer, unavailable } } — montado sob demanda,

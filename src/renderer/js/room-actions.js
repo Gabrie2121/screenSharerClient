@@ -10,6 +10,7 @@ import { destroyMicPipeline } from './voice/noise-suppression.js'
 import { stopSpeakingLoop, clearAllVoiceAnalysers } from './voice/speaking-detection.js'
 import { stopShareAudioDuck } from './share-audio-duck.js'
 import { closeParticipantVolumePopover } from './voice/volume.js'
+import { resetChat } from './chat/chat.js'
 
 /* ═══════════════════════════════════════════════════════════════
    COPIAR ID
@@ -68,6 +69,10 @@ $('btn-leave').onclick = () => {
   state.participantVolumes = {}
   state.participantLastVolume = {}
   closeParticipantVolumePopover()
+  // A conversa não é guardada nesta máquina (ver o cabeçalho de
+  // js/chat/chat.js): saindo da sala, some da tela também. Ela continua
+  // no servidor por alguns minutos — voltar ao mesmo código a traz de volta.
+  resetChat()
   $('stage-grid').innerHTML = ''
   $('stage-empty').classList.remove('hidden')
   $('stage-grid').classList.add('hidden')

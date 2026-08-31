@@ -23,6 +23,9 @@ import {
 } from './webrtc/camera.js'
 import { renderCameraTiles } from './camera-tiles.js'
 import { clearRemoteVoiceAnalysers } from './voice/speaking-detection.js'
+import {
+  loadChatHistory, receiveChatMessage, receiveTyping, clearTypingFor,
+} from './chat/chat.js'
 
 /* ═══════════════════════════════════════════════════════════════
    WEBSOCKET
@@ -171,6 +174,11 @@ export function connectWebSocket() {
     state.voiceAudioEls = {}
     clearRemoteVoiceAnalysers()
     state.speaking.clear()
+    // As mensagens NÃO são apagadas aqui: a reconexão traz o histórico de
+    // volta no 'chat-history' do JOIN, e a sala só é destruída no servidor
+    // alguns minutos depois de esvaziar. Já os "está digitando" precisam
+    // sair — o aviso de "parei" não tem como chegar com o socket morto.
+    Object.keys(state.chatTyping).forEach(uid => clearTypingFor(uid))
     stopPing()
     renderParticipants()
 
@@ -257,6 +265,7 @@ async function handleMessage(msg) {
       // Saiu de vez: derruba os dois sentidos da câmera (o que eu recebia
       // dela E o que eu enviava pra ela).
       cleanupCameraForUser(msg.user_id, true)
+      clearTypingFor(msg.user_id)
       removeUser(msg.user_id)
       break
 
@@ -353,9 +362,38 @@ async function handleMessage(msg) {
       await applyViewerQuality(msg.from, msg.payload?.height ?? null)
       break
 
+    /* ── CHAT TEMPORÁRIO DA SALA ──
+       O histórico chega logo depois do 'room-info', numa mensagem à parte
+       (ver o bloco JOIN em routes/ws.py). Vem vazio quando ninguém
+       escreveu nada — ou quando a sala passou do prazo de carência e foi
+       varrida, que é justamente o "temporário" do chat. */
+    case 'chat-history':
+      loadChatHistory(msg.messages)
+      break
+
+    // Mensagem nova. O servidor manda pra sala INTEIRA, inclusive pra quem
+    // escreveu: é o eco dele que define a ordem que todo mundo vê (ver o
+    // cabeçalho de js/chat/chat.js).
+    case 'chat-message':
+      receiveChatMessage(msg.payload)
+      break
+
+    case 'user-typing':
+      receiveTyping(msg.user_id, msg.username, !!msg.payload?.typing)
+      break
+
     // Resposta do ping — mede a latência com o servidor
     case 'pong':
       handlePong(msg.payload)
+      break
+
+    /* Erro vindo do servidor. Até aqui era ignorado em silêncio, o que
+       bastava enquanto todo 'error' significava um bug de protocolo que
+       ninguém veria. Com o chat isso mudou: "entre na sala antes de
+       conversar" e afins precisam chegar a quem está esperando a mensagem
+       aparecer. */
+    case 'error':
+      appLog('WARN', `Servidor recusou: ${msg.payload?.detail || 'motivo não informado'}`)
       break
   }
 }

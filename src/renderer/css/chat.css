@@ -1,0 +1,502 @@
+/* ═══════════════════════════════════════════
+   CHAT TEMPORÁRIO DA SALA
+
+   Coluna fixa à direita do palco, do jeito que um app de voz mostra a
+   conversa ao lado da chamada. O palco tem `flex: 1` e `min-width: 0`
+   (ver css/stage.css), então abrir o chat aperta o vídeo em vez de
+   empurrar qualquer coisa pra fora da janela.
+
+   Uma mensagem SEGUIDA da mesma pessoa não repete avatar nem nome: vira
+   só o texto, com o horário aparecendo na margem ao passar o mouse. É o
+   que faz uma conversa parecer conversa em vez de uma pilha de fichas.
+═══════════════════════════════════════════ */
+.chat-panel {
+  width: 340px;
+  flex-shrink: 0;
+  background: var(--bg2);
+  border-left: 1px solid var(--border2);
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+/* ── Cabeçalho ── */
+.chat-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px 10px 14px;
+  border-bottom: 1px solid var(--border2);
+  flex-shrink: 0;
+}
+.chat-header-icon { --icon-size: 18px; color: var(--text3); }
+.chat-header-text { display: flex; flex-direction: column; min-width: 0; flex: 1; }
+.chat-title { font-size: 14px; font-weight: 600; color: var(--text); }
+.chat-sub {
+  font-size: 11px;
+  color: var(--text3);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ── Corpo ──
+   `position: relative` porque o estado vazio, o botão de "novas
+   mensagens" e a máscara de arrastar-e-soltar são todos sobreposições
+   desta área — nenhum deles pode entrar na lista, que é reconstruída com
+   innerHTML a cada histórico novo. */
+.chat-body {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+}
+.chat-messages {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 12px 0 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.chat-empty {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  text-align: center;
+  padding: 0 28px;
+  color: var(--text3);
+  /* Não pode roubar o clique de nada que esteja embaixo (a lista continua
+     rolável, e a área inteira aceita arrastar arquivo). */
+  pointer-events: none;
+}
+.chat-empty-icon { --icon-size: 34px; opacity: .4; }
+.chat-empty p { font-size: 13px; color: var(--text2); }
+.chat-empty span { font-size: 11.5px; line-height: 1.5; }
+
+/* ── Mensagem ── */
+.chat-msg {
+  display: flex;
+  gap: 10px;
+  padding: 3px 14px 3px 12px;
+  position: relative;
+}
+/* Bloco novo (com avatar e nome) ganha um respiro do bloco anterior. */
+.chat-msg:not(.grouped) { margin-top: 10px; }
+.chat-msg:first-child { margin-top: 0; }
+.chat-msg:hover { background: var(--hover); }
+
+.chat-msg-avatar {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  font-weight: 600;
+  color: #fff;
+  margin-top: 2px;
+  user-select: none;
+}
+
+/* Margem das mensagens agrupadas: mesma largura do avatar, com o horário
+   aparecendo só no hover. Sem ela o texto agrupado não alinharia com o do
+   bloco acima. */
+.chat-msg-gutter {
+  width: 36px;
+  flex-shrink: 0;
+  font-size: 10px;
+  color: var(--text3);
+  text-align: right;
+  padding-top: 3px;
+  opacity: 0;
+  transition: opacity .1s;
+  user-select: none;
+}
+.chat-msg:hover .chat-msg-gutter { opacity: 1; }
+
+.chat-msg-body { min-width: 0; flex: 1; }
+.chat-msg-head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin-bottom: 1px;
+}
+.chat-msg-author {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.chat-msg-time { font-size: 10.5px; color: var(--text3); flex-shrink: 0; }
+
+.chat-msg-text {
+  font-size: 14px;
+  line-height: 1.45;
+  color: var(--text2);
+  /* Uma URL colada sem espaço não pode alargar a coluna inteira. */
+  overflow-wrap: anywhere;
+  user-select: text;
+}
+.chat-msg-text strong { color: var(--text); font-weight: 700; }
+.chat-code {
+  font-family: var(--mono);
+  font-size: 12.5px;
+  background: var(--bg);
+  border: 1px solid var(--border2);
+  border-radius: 4px;
+  padding: 1px 4px;
+}
+
+/* Link não é <a href> de propósito (ver o cabeçalho de js/chat/format.js):
+   um href navegaria a janela do app pra fora, e o app não tem barra de
+   endereço nem botão de voltar. Quem abre é o navegador do sistema. */
+.chat-link { color: var(--accent); cursor: pointer; }
+.chat-link:hover { text-decoration: underline; }
+
+/* ── Anexos dentro da mensagem ── */
+.chat-msg-files {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 5px;
+}
+
+.chat-img {
+  display: block;
+  width: 100%;
+  max-width: 260px;
+  max-height: 260px;
+  padding: 0;
+  border: 1px solid var(--border2);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  background: var(--bg);
+  cursor: pointer;
+  transition: border-color .15s;
+}
+.chat-img:hover { border-color: var(--border); }
+.chat-img img { width: 100%; height: 100%; object-fit: cover; display: block; }
+
+.chat-file {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  max-width: 280px;
+  background: var(--bg3);
+  border: 1px solid var(--border2);
+  border-radius: var(--radius-sm);
+  padding: 9px 10px;
+}
+.chat-file-icon { --icon-size: 20px; color: var(--accent); flex-shrink: 0; line-height: 0; }
+.chat-file-meta { display: flex; flex-direction: column; min-width: 0; flex: 1; }
+.chat-file-name {
+  font-size: 13px;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.chat-file-size { font-size: 11px; color: var(--text3); }
+.chat-file-dl {
+  --icon-size: 17px;
+  background: none;
+  border: none;
+  color: var(--text3);
+  cursor: pointer;
+  padding: 5px;
+  border-radius: 4px;
+  line-height: 0;
+  flex-shrink: 0;
+  transition: color .15s, background .15s;
+}
+.chat-file-dl:hover { color: var(--text); background: var(--hover2); }
+
+/* ── "Novas mensagens" ──
+   Só aparece pra quem subiu pra reler algo: nesse caso a lista NÃO é
+   puxada de volta sozinha a cada mensagem nova (ver estaNoFim em
+   js/chat/chat.js). */
+.chat-jump {
+  position: absolute;
+  left: 50%;
+  bottom: 10px;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  --icon-size: 14px;
+  background: var(--accent);
+  color: #fff;
+  border: none;
+  border-radius: 999px;
+  padding: 6px 12px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  box-shadow: var(--shadow);
+}
+.chat-jump:hover { background: var(--accent2); }
+
+/* ── Arrastar arquivo pra cá ── */
+.chat-drop {
+  position: absolute;
+  inset: 6px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  background: var(--accent-soft);
+  border: 2px dashed var(--accent-border);
+  border-radius: var(--radius);
+  color: var(--text);
+  font-size: 13px;
+  pointer-events: none;   /* o drop é ouvido no painel, não nesta máscara */
+}
+.chat-drop-icon { --icon-size: 26px; color: var(--accent); }
+
+/* ── "Fulano está digitando" ── */
+.chat-typing {
+  padding: 4px 14px 0;
+  font-size: 11.5px;
+  color: var(--text3);
+  font-style: italic;
+  flex-shrink: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ── Bandeja de anexos em preparo ──
+   O arquivo já subiu pro servidor, mas a MENSAGEM ainda não saiu: dá pra
+   ver a prévia, mudar de ideia e remover sem que ninguém tenha visto. */
+.chat-drafts {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px 12px 0;
+  max-height: 168px;
+  overflow-y: auto;
+  flex-shrink: 0;
+}
+.chat-draft {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  background: var(--bg3);
+  border: 1px solid var(--border2);
+  border-radius: var(--radius-sm);
+  padding: 6px 8px;
+  overflow: hidden;
+}
+.chat-draft.erro { border-color: var(--red-border); background: var(--red-soft); }
+.chat-draft-thumb {
+  width: 32px;
+  height: 32px;
+  border-radius: 4px;
+  object-fit: cover;
+  flex-shrink: 0;
+  background: var(--bg);
+}
+.chat-draft-icon {
+  --icon-size: 17px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text3);
+}
+.chat-draft-meta { display: flex; flex-direction: column; min-width: 0; flex: 1; }
+.chat-draft-name {
+  font-size: 12.5px;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.chat-draft-sub { font-size: 10.5px; color: var(--text3); }
+.chat-draft.erro .chat-draft-sub { color: var(--red); }
+.chat-draft-x {
+  --icon-size: 14px;
+  background: none;
+  border: none;
+  color: var(--text3);
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 4px;
+  line-height: 0;
+  flex-shrink: 0;
+}
+.chat-draft-x:hover { color: var(--text); background: var(--hover2); }
+
+/* Barra de progresso colada no rodapé do próprio item, em vez de ocupar
+   uma linha própria: o item já é pequeno e ganharia altura à toa. */
+.chat-draft-bar {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 2px;
+  background: var(--border2);
+}
+.chat-draft-bar span {
+  display: block;
+  height: 100%;
+  background: var(--accent);
+  transition: width .12s linear;
+}
+
+/* ── Campo de escrever ── */
+.chat-composer {
+  display: flex;
+  align-items: flex-end;
+  gap: 4px;
+  margin: 8px 12px 12px;
+  background: var(--bg3);
+  border: 1px solid var(--border2);
+  border-radius: var(--radius);
+  padding: 4px;
+  flex-shrink: 0;
+  transition: border-color .15s;
+}
+.chat-composer:focus-within { border-color: var(--accent-border); }
+
+.chat-composer textarea {
+  flex: 1;
+  min-width: 0;
+  background: none;
+  border: none;
+  outline: none;
+  resize: none;
+  color: var(--text);
+  font-family: var(--font);
+  font-size: 14px;
+  line-height: 1.4;
+  padding: 8px 2px;
+  max-height: 160px;
+  user-select: text;
+}
+.chat-composer textarea::placeholder { color: var(--text3); }
+
+.chat-attach,
+.chat-send {
+  --icon-size: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: none;
+  border: none;
+  border-radius: var(--radius-sm);
+  color: var(--text3);
+  cursor: pointer;
+  padding: 8px;
+  flex-shrink: 0;
+  transition: color .15s, background .15s;
+}
+.chat-attach:hover { color: var(--text); background: var(--hover2); }
+.chat-send { color: var(--accent); }
+.chat-send:hover:not(:disabled) { background: var(--accent-soft); }
+.chat-send:disabled { color: var(--text3); opacity: .5; cursor: default; }
+
+/* ═══════════════════════════════════════════
+   BOTÃO DO CHAT NO PALCO
+   Flutua por cima do vídeo, no canto superior direito. O selo de não
+   lidas só existe com o painel fechado — abrindo, ele zera.
+═══════════════════════════════════════════ */
+.stage-controls {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  display: flex;
+  gap: 6px;
+  z-index: 5;
+}
+.stage-btn {
+  position: relative;
+  --icon-size: 19px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: var(--radius-sm);
+  /* Fundo próprio, e não transparente: o botão fica sobre vídeo, que pode
+     ser de qualquer cor — sem isso ele some numa cena clara. */
+  background: rgba(0, 0, 0, .55);
+  border: 1px solid var(--border2);
+  color: var(--text2);
+  cursor: pointer;
+  transition: background .15s, color .15s;
+}
+.stage-btn:hover { background: var(--bg3); color: var(--text); }
+.stage-btn.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+
+.chat-unread {
+  position: absolute;
+  top: -5px;
+  right: -5px;
+  min-width: 17px;
+  height: 17px;
+  padding: 0 4px;
+  border-radius: 999px;
+  background: var(--red);
+  color: #fff;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 17px;
+  text-align: center;
+  border: 2px solid var(--bg);
+}
+
+/* ═══════════════════════════════════════════
+   IMAGEM EM TAMANHO GRANDE
+═══════════════════════════════════════════ */
+.chat-lightbox {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  background: rgba(0, 0, 0, .85);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 48px 32px 32px;
+}
+.chat-lightbox-bar {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px;
+  background: var(--bg2);
+  border-bottom: 1px solid var(--border2);
+}
+.chat-lightbox-name {
+  flex: 1;
+  font-size: 13px;
+  color: var(--text2);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+#chat-lightbox-img {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+  border-radius: var(--radius-sm);
+}

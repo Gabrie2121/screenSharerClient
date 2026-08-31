@@ -12,6 +12,10 @@
      3. faltantes — helper de outro módulo usado SEM importar
      4. dom       — todo `$('algum-id')` existe como id no index.html
 
+   As checagens 3 e 4 leem o código com os comentários REMOVIDOS (ver
+   semComentarios): sem isso, citar `algumaFuncao()` num comentário — o que
+   este projeto faz o tempo todo — viraria um erro.
+
    Não substitui rodar o app: não executa nada, só lê os arquivos.
 ═══════════════════════════════════════════════════════════════ */
 const fs = require('fs')
@@ -34,6 +38,89 @@ function walk(dir, out = []) {
 const rel = (f) => path.relative(SRC, f).replace(/\\/g, '/')
 let problemas = 0
 const erro = (msg) => { console.log('  x ' + msg); problemas++ }
+
+/* Devolve o código sem os comentários (cada caractere removido vira um
+   espaço, então as posições e as linhas continuam batendo). Existe porque
+   as checagens 3 e 4 varrem o código por TEXTO, e o padrão da casa é
+   comentar denso citando nomes de função — "ver renderIcons() em main.js"
+   dentro de um comentário virava um erro de "chama sem importar".
+
+   Precisa entender literal de expressão regular, não só aspas: este
+   projeto tem `.replace(/"/g, ...)`. Um scanner que tratasse essa barra
+   como divisão entraria em "modo string" na aspa seguinte e embaralharia
+   todo o resto do arquivo. A regra é a heurística clássica: uma barra
+   começa uma regex quando o último caractere significativo NÃO é
+   identificador, número, `)` ou `]` — ou seja, quando ali não caberia uma
+   divisão. */
+function semComentarios(src) {
+  const NL = '\n'
+  let fora = ''
+  let i = 0
+  let anterior = '' // último caractere significativo já emitido
+
+  const fimDeValor = (c) => /[A-Za-z0-9_$)\]]/.test(c)
+
+  while (i < src.length) {
+    const c = src[i]
+    const prox = src[i + 1]
+
+    // Comentário de linha
+    if (c === '/' && prox === '/') {
+      while (i < src.length && src[i] !== NL) { fora += ' '; i++ }
+      continue
+    }
+
+    // Comentário de bloco — as quebras de linha são preservadas
+    if (c === '/' && prox === '*') {
+      while (i < src.length && !(src[i] === '*' && src[i + 1] === '/')) {
+        fora += src[i] === NL ? NL : ' '
+        i++
+      }
+      fora += '  '
+      i += 2
+      continue
+    }
+
+    // Texto entre aspas ou crases — copiado como está (pode conter // e /*)
+    if (c === '"' || c === "'" || c === '`') {
+      fora += c
+      i++
+      while (i < src.length) {
+        if (src[i] === '\\') { fora += src[i] + (src[i + 1] || ''); i += 2; continue }
+        fora += src[i]
+        const fechou = src[i] === c
+        i++
+        if (fechou) break
+      }
+      anterior = c
+      continue
+    }
+
+    // Literal de expressão regular
+    if (c === '/' && !fimDeValor(anterior)) {
+      fora += c
+      i++
+      let emClasse = false
+      while (i < src.length) {
+        if (src[i] === '\\') { fora += src[i] + (src[i + 1] || ''); i += 2; continue }
+        if (src[i] === '[') emClasse = true
+        else if (src[i] === ']') emClasse = false
+        fora += src[i]
+        const fechou = src[i] === '/' && !emClasse
+        i++
+        if (fechou) break
+      }
+      anterior = '/'
+      continue
+    }
+
+    fora += c
+    if (!/\s/.test(c)) anterior = c
+    i++
+  }
+
+  return fora
+}
 
 // Nomes exportados por um módulo. Usado pelas checagens 2 e 3.
 const cacheExports = new Map()
@@ -139,7 +226,7 @@ console.log('\nHelpers importados')
   ambiguos.forEach((n) => dono.delete(n))
 
   for (const file of arquivos) {
-    const src = fs.readFileSync(file, 'utf8')
+    const src = semComentarios(fs.readFileSync(file, 'utf8'))
     const disponiveis = nomesDisponiveis(src)
     const jaAvisado = new Set()
     for (const m of src.matchAll(/(?<![.\w$])([A-Za-z_$][A-Za-z0-9_$]*)\s*\(/g)) {
@@ -161,7 +248,7 @@ console.log('\nIds do DOM')
   const vistos = new Set()
   let conferidos = 0
   for (const f of walk(path.join(RENDERER, 'js'))) {
-    const src = fs.readFileSync(f, 'utf8')
+    const src = semComentarios(fs.readFileSync(f, 'utf8'))
     for (const m of src.matchAll(/\$\(\s*'([^']+)'\s*\)/g)) {
       const id = m[1]
       const chave = f + '|' + id

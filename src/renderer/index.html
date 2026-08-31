@@ -161,7 +161,87 @@
            mesmo layout, como numa chamada em grupo. Um clique em qualquer
            tile o coloca em foco (ver toggleFocus em js/stage-layout.js). -->
       <div id="stage-grid" class="stage-grid hidden"></div>
+
+      <!-- CONTROLES DO PALCO — flutuam no canto superior direito, por cima
+           do vídeo. O chat mora aqui, e não na sidebar, pelo mesmo motivo
+           que num app de voz: o rodapé da sidebar é sobre a CONEXÃO e sobre
+           MIM (voz, transmissão, microfone), enquanto o chat é sobre a
+           conversa que acontece ao lado do que está no palco. -->
+      <div class="stage-controls">
+        <button class="stage-btn" id="btn-chat-toggle" title="Chat da sala">
+          <span class="icon-box" data-icon="chat"></span>
+          <span id="chat-unread" class="chat-unread hidden"></span>
+        </button>
+      </div>
     </main>
+
+    <!-- ══════════ CHAT TEMPORÁRIO DA SALA ══════════
+         Começa quando alguém entra (entrar na sala já é entrar na voz) e o
+         servidor o apaga alguns minutos depois de a sala esvaziar — quem
+         voltar antes disso reencontra a conversa. Ver js/chat/chat.js. -->
+    <aside id="chat-panel" class="chat-panel hidden">
+      <div class="chat-header">
+        <span class="chat-header-icon icon-box" data-icon="chat"></span>
+        <div class="chat-header-text">
+          <span class="chat-title">Chat da sala</span>
+          <span class="chat-sub">Temporário — some quando a sala esvazia</span>
+        </div>
+        <button class="icon-btn" id="btn-chat-close" title="Fechar chat">
+          <span class="icon-box" data-icon="close"></span>
+        </button>
+      </div>
+
+      <div class="chat-body">
+        <div id="chat-messages" class="chat-messages"></div>
+
+        <!-- FORA do #chat-messages de propósito: a lista é esvaziada com
+             innerHTML a cada histórico novo, e o estado vazio iria junto. -->
+        <div id="chat-empty" class="chat-empty">
+          <span class="chat-empty-icon icon-box" data-icon="chat"></span>
+          <p>Nenhuma mensagem ainda</p>
+          <span>Texto, imagens e arquivos — tudo some quando a sala esvazia.</span>
+        </div>
+
+        <button id="chat-jump" class="chat-jump hidden">
+          <span class="icon-box" data-icon="chevron-down"></span> Novas mensagens
+        </button>
+
+        <div id="chat-drop" class="chat-drop hidden">
+          <span class="chat-drop-icon icon-box" data-icon="paperclip"></span>
+          <p>Solte para anexar</p>
+        </div>
+      </div>
+
+      <div id="chat-typing" class="chat-typing hidden"></div>
+      <div id="chat-drafts" class="chat-drafts hidden"></div>
+
+      <div class="chat-composer">
+        <button class="chat-attach" id="btn-chat-attach" title="Anexar arquivo">
+          <span class="icon-box" data-icon="paperclip"></span>
+        </button>
+        <textarea id="chat-input" rows="1" maxlength="2000"
+                  placeholder="Mensagem para a sala"></textarea>
+        <button class="chat-send" id="btn-chat-send" title="Enviar" disabled>
+          <span class="icon-box" data-icon="send"></span>
+        </button>
+      </div>
+
+      <input type="file" id="chat-file-input" class="hidden" multiple />
+    </aside>
+  </div>
+
+  <!-- IMAGEM DO CHAT EM TAMANHO GRANDE -->
+  <div id="chat-lightbox" class="chat-lightbox hidden">
+    <div class="chat-lightbox-bar">
+      <span id="chat-lightbox-name" class="chat-lightbox-name"></span>
+      <button class="icon-btn" id="btn-chat-lightbox-download" title="Baixar">
+        <span class="icon-box" data-icon="download"></span>
+      </button>
+      <button class="icon-btn" id="btn-chat-lightbox-close" title="Fechar">
+        <span class="icon-box" data-icon="close"></span>
+      </button>
+    </div>
+    <img id="chat-lightbox-img" alt="" />
   </div>
 
   <!-- MODAL: escolher fonte de captura -->

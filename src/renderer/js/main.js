@@ -55,6 +55,10 @@ import './auto-pip.js'
 import './camera-tiles.js'
 import './webrtc/camera.js'
 
+// Chat de texto da sala — temporário, morre junto com a sala (ver
+// js/chat/chat.js e core/chat_manager.py no backend).
+import './chat/chat.js'
+
 // Chat de voz
 import './voice/audio-context.js'
 import './voice/noise-suppression.js'

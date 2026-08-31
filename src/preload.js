@@ -38,6 +38,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
     return () => ipcRenderer.removeListener('system-audio-chunk', handler)
   },
 
+  // Chat da sala — link vai pro navegador do sistema, anexo vai pra pasta
+  // de Downloads. Os dois conferem o protocolo no processo principal (ver
+  // src/main/ipc.js): a URL vem de texto que outra pessoa digitou.
+  openExternal: (url) => ipcRenderer.invoke('open-external', url),
+  downloadFile: (url, nome) => ipcRenderer.invoke('download-file', url, nome),
+
   // Auto-update
   startUpdate:          () => ipcRenderer.send('update-start'),
   installUpdate:        () => ipcRenderer.send('update-install'),

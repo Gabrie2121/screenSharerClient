@@ -2,6 +2,7 @@ import { $ } from './core/dom.js'
 import { appLog } from './core/logger.js'
 import { showError, hideError } from './core/toast.js'
 import { state, LAST_NAME_KEY, LAST_SERVER_KEY, LAST_ROOM_KEY } from './core/state.js'
+import { httpUrl } from './core/server-url.js'
 import { connectWebSocket, prepareForNewConnection } from './websocket.js'
 
 /* ═══════════════════════════════════════════════════════════════
@@ -44,9 +45,8 @@ $('btn-create-room').onclick = async () => {
 
   // Cria sala via REST
   setLoginButtonsDisabled(true)
-  const httpUrl = server.replace(/^ws/, 'http')
   try {
-    const res = await fetch(`${httpUrl}/api/rooms/`, { method: 'POST' })
+    const res = await fetch(httpUrl('/api/rooms/', server), { method: 'POST' })
     const data = await res.json()
     enterRoom(name, server, data.room_id)
   } catch {

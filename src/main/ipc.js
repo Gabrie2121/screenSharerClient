@@ -1,3 +1,5 @@
+const fs = require('fs')
+const path = require('path')
 const { app, ipcMain, desktopCapturer, shell } = require('electron')
 const { log, LOG_DIR, LOG_FILE } = require('./logger.js')
 
@@ -49,4 +51,92 @@ ipcMain.handle('get-sources', async () => {
     name: s.name,
     thumbnail: s.thumbnail.toDataURL(),
   }))
+})
+
+/* ═══════════════════════════════════════════════════════════════
+   LINKS E ARQUIVOS DO CHAT
+
+   Os dois handlers abaixo recebem URLs vindas do renderer, ou seja, de
+   texto que outra pessoa da sala digitou. Por isso os dois conferem o
+   PROTOCOLO antes de agir: sem isso, um `file:///C:/...` numa mensagem
+   viraria "abrir um arquivo qualquer da máquina de quem clicou".
+═══════════════════════════════════════════════════════════════ */
+function urlWeb(bruta) {
+  try {
+    const u = new URL(bruta)
+    return (u.protocol === 'http:' || u.protocol === 'https:') ? u : null
+  } catch {
+    return null
+  }
+}
+
+// Link do chat vai pro navegador do sistema. Abrir dentro da janela
+// levaria o app inteiro pra fora — ele não tem barra de endereço nem botão
+// de voltar, e a pessoa ficaria presa numa página qualquer.
+ipcMain.handle('open-external', async (_e, url) => {
+  if (!urlWeb(url)) {
+    log('WARN', `Link recusado (protocolo não permitido): ${url}`)
+    return false
+  }
+  await shell.openExternal(url)
+  return true
+})
+
+/* Baixar um anexo do chat pra pasta de Downloads.
+
+   Um único ouvinte de 'will-download' por sessão, com os pedidos numa
+   fila por URL: registrar um `once` por clique parece mais simples, mas
+   dois downloads iniciados quase juntos trocariam de destino entre si —
+   o `once` que dispara primeiro atende o item que chegar primeiro, não
+   necessariamente o dele. */
+const downloadsPendentes = new Map()
+const sessoesOuvindo = new WeakSet()
+
+function nomeLivre(pasta, nome) {
+  const ext = path.extname(nome)
+  const base = path.basename(nome, ext)
+  let candidato = path.join(pasta, nome)
+  let n = 1
+  // Não sobrescreve o que já está lá: dois prints com o mesmo nome viram
+  // "print (1).png", como faria o navegador.
+  while (fs.existsSync(candidato)) {
+    candidato = path.join(pasta, `${base} (${n++})${ext}`)
+  }
+  return candidato
+}
+
+ipcMain.handle('download-file', (e, url, nomeSugerido) => {
+  if (!urlWeb(url)) return Promise.reject(new Error('Endereço não permitido'))
+
+  const ses = e.sender.session
+  if (!sessoesOuvindo.has(ses)) {
+    sessoesOuvindo.add(ses)
+    ses.on('will-download', (_event, item) => {
+      const pedido = downloadsPendentes.get(item.getURL())
+      // Download que não veio deste handler (nenhum hoje, mas se um dia
+      // vier): deixa o Electron tratar do jeito padrão.
+      if (!pedido) return
+      downloadsPendentes.delete(item.getURL())
+
+      const destino = nomeLivre(
+        app.getPath('downloads'),
+        pedido.nome || item.getFilename() || 'arquivo',
+      )
+      item.setSavePath(destino)
+      item.once('done', (_ev, estado) => {
+        if (estado === 'completed') {
+          log('INFO', `Anexo salvo em ${destino}`)
+          pedido.resolve(destino)
+        } else {
+          log('WARN', `Download de ${item.getURL()} terminou como "${estado}"`)
+          pedido.reject(new Error(estado))
+        }
+      })
+    })
+  }
+
+  return new Promise((resolve, reject) => {
+    downloadsPendentes.set(url, { nome: nomeSugerido, resolve, reject })
+    e.sender.downloadURL(url)
+  })
 })

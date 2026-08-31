@@ -48,6 +48,28 @@ function createWindow() {
     },
   })
 
+  /* ═══════════════════════════════════════════════════════════════
+     A JANELA NUNCA NAVEGA PRA FORA
+
+     O renderer é a interface do app, carregada de um arquivo local. Não
+     existe caso legítimo em que ela deva virar outra página — e com o chat
+     passou a existir texto de OUTRAS pessoas sendo renderizado aqui.
+     Bastaria um clique errado num link pra janela inteira sair do app, sem
+     barra de endereço nem botão de voltar pra desfazer.
+
+     Links do chat abrem no navegador do sistema por um caminho próprio
+     (ver open-external em ipc.js), que confere o protocolo antes.
+  ═══════════════════════════════════════════════════════════════ */
+  win.webContents.on('will-navigate', (event, url) => {
+    if (url === win.webContents.getURL()) return   // reload é navegação pra si mesmo
+    event.preventDefault()
+    log('WARN', `Navegação bloqueada para ${url}`)
+  })
+  win.webContents.setWindowOpenHandler(({ url }) => {
+    log('WARN', `Abertura de janela bloqueada para ${url}`)
+    return { action: 'deny' }
+  })
+
   // Deixa o Electron mostrar o seletor nativo de tela.
   // `audio: 'loopback'` captura o áudio de saída do Windows inteiro (tela toda),
   // que é exatamente o que o getDisplayMedia({ audio: true }) do renderer pede.
