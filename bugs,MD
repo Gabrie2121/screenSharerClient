@@ -42,6 +42,86 @@
   loopback do sistema. A voz do chat não entra mais na captura — não é
   abafada depois, simplesmente não faz parte dela.
 
+- ~~Transmissão de tela travada com jogo, em 30 e em 60 FPS, bem menos
+  fluida que o Discord~~
+  Causa: sem preferência de codec declarada, o Chromium negocia **VP8**,
+  que só tem encoder de **software** (libvpx) — e o libvpx não acompanha
+  tela em movimento. Ele não avisa de jeito nenhum:
+  `qualityLimitationReason` fica em `none`, a resolução não cai e o bitrate
+  não muda. Ele simplesmente codifica menos quadros do que a captura
+  entrega, e o resto é descartado em silêncio.
+
+  Medido com fonte controlada (animação em tela cheia, pares de 60s, MESMA
+  resolução e MESMO alvo de 2,5 Mbps dos dois lados):
+
+  | saída | captura entrega | VP8 / libvpx | H264 / hardware |
+  |---|---|---|---|
+  | 608x1080 | 57 fps | **36 fps** (perde 36%) | **57 fps** (perde nada) |
+  | 810x1440 | 57 fps | **17 fps** (perde 70%) | **40 fps** |
+
+  O déficit **cresce com a resolução**, que é o que faz o sintoma piorar em
+  tela grande. Nos 608x1080: p05 do FPS 34 contra 57, congelamentos 1-2
+  contra 0, CPU do app 4,5% contra 3,8%. Cinco pares em duas resoluções,
+  variância zero dentro de cada configuração (37/36/36 contra 57/57/57).
+
+  Correção: `preferVideoCodec` em `js/webrtc/screen-share-peers.js` põe
+  H264 na frente na OFFER — que é do watcher, já que quem compartilha é o
+  answerer e não teria como declarar. Com isso o encoder vira o
+  `MediaFoundationVideoEncodeAccelerator`.
+
+  **Por que demorou a aparecer:** só se manifesta quando a fonte entrega
+  MAIS quadros que o teto do libvpx. Medindo com a captura da janela de um
+  jogo que só produzia ~31 fps, os dois codecs empatavam — uma primeira
+  leva inteira de medições concluiu, erradamente, que trocar o codec não
+  mudava nada. Foi preciso uma fonte controlada de taxa conhecida pra
+  separar as duas coisas.
+
 ## Abertos
 
 - (nada registrado no momento)
+
+## Hipóteses de fluidez já testadas e DESCARTADAS
+
+Medido com harness próprio (par de RTCPeerConnection espelhando a forma
+real do app, rodadas de 60s, antes/depois alternado). Nada disto está no
+código.
+
+**Ressalva importante sobre esta tabela:** ela foi levantada capturando a
+JANELA de um jogo, que só entregava ~31 fps — abaixo do teto do encoder de
+software. Nessa carga o encoder nunca era o gargalo, então estes números
+dizem o que cada ajuste faz com a RESOLUÇÃO e o bitrate, não o que fariam
+num cenário limitado por encoder. Foi exatamente esse defeito de carga que
+escondeu a causa real por uma leva inteira de medições.
+
+| hipótese | resultado |
+|---|---|
+| `contentHint = 'motion'` na track | **piora**: derruba a saída de 1920x776 pra 960x388 e passa a limitar por banda, sem ganhar FPS |
+| `degradationPreference='maintain-framerate'` | **piora**: p05 do FPS caiu de 28 pra 8, com 7 congelamentos |
+| `maxFramerate` nas encodings | sem efeito (32 vs 31 FPS) |
+| os três juntos | 53 FPS, mas comprados caindo pra **720x291** — fluidez trocada por borrão |
+| subir o teto de banda pra 8 Mbps **no encoder de software** | **desastre**: 5 FPS, 22 congelamentos, 14,4s parado em 60s |
+| VP9 | **desastre**: 11 FPS, 28 congelamentos, 21,3s parado |
+| AV1 (libaom) | funciona (30 FPS) mas é software; sem vantagem sobre o padrão |
+
+Os três primeiros foram **reavaliados depois**, já sobre o H264 e com fonte
+controlada de 57 fps em 810x1440, que é a carga onde o encoder realmente
+aperta. Continuam descartados: `maintain-framerate` deu 38 fps e
+`maxFramerate` 38, contra 39 do H264 puro — nada. E o `contentHint='motion'`
+chega aos 57 fps derrubando a saída de 810x1440 pra **360x640**: um quinto
+dos pixels. É fluidez comprada com borrão, do mesmo jeito que no software.
+
+O `maxBitrate` só vira problema no caminho de software: com hardware, 12
+Mbps deu 0 congelamentos. **Subir bitrate sem garantir encoder de hardware
+reproduz o sintoma** — foi a configuração que mais se pareceu com o bug.
+Com o H264 já preferido, esse risco some, mas não há motivo medido pra
+mexer nos tetos: eles não mudaram FPS nem congelamentos.
+
+Sobre os erros `wgc_capture_session: ProcessFrame failed (E_FAIL)` que
+aparecem em rajadas: só acontecem capturando JANELA (a do jogo). Nas
+rodadas de tela inteira foram **zero**. Não são a causa do travamento —
+mas se alguém for investigar captura de janela, comece por aí.
+
+Fica também o log `[SHARE] encoder de vídeo ...` (`logEncoderUsed`), que
+diz se a máquina codificou por hardware ou software. É a informação que
+faltava pra sequer começar este diagnóstico, e é como se confere numa
+máquina sem H264 por hardware.

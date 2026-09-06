@@ -74,15 +74,82 @@ export function stopWatchTimeout(uid) {
 }
 
 /* ═══════════════════════════════════════════════════════════════
+   CODEC DE VÍDEO — H264 NA FRENTE, PARA PEGAR O ENCODER DE HARDWARE
+
+   Sem preferência declarada o Chromium negocia VP8, que só tem encoder de
+   SOFTWARE (libvpx) — e o libvpx não dá conta de tela em movimento acima
+   de ~36 fps nesta máquina. Ele não avisa: `qualityLimitationReason` fica
+   em `none`, a resolução não cai, o bitrate não muda. Ele simplesmente
+   codifica menos quadros do que a captura entrega, e o resto é descartado.
+
+   Medido com fonte controlada (animação em tela cheia, 3 pares de 60s,
+   MESMA resolução 608x1080 e MESMO alvo de 2,5 Mbps nos dois lados):
+
+     captura entrega ...... 57 fps
+     VP8 / libvpx ......... 36 fps codificados  (perde 36% dos quadros)
+     H264 / MediaFoundation 57 fps codificados  (perde nada)
+
+     p05 do FPS ........... VP8 34   |  H264 57
+     congelamentos ........ VP8 1-2  |  H264 0
+     CPU do app ........... VP8 4,5% |  H264 3,8%
+
+   Três pares, zero variância: 37/36/36 contra 57/57/57.
+
+   Por que isso passou despercebido: só aparece quando a fonte entrega MAIS
+   que o teto do libvpx. Capturando a janela de um jogo que só produzia
+   ~31 fps, os dois codecs empatavam — foi assim que uma primeira leva de
+   medições concluiu, erradamente, que trocar o codec não mudava nada.
+
+   A preferência vai na OFFER porque quem oferta é quem ASSISTE (ver o
+   contrato em CLAUDE.md: a tela é sempre ofertada pelo watcher, e quem
+   compartilha é o answerer). Quem compartilha não teria como declarar.
+
+   Sem H264 na lista da máquina, a função não mexe em nada.
+═══════════════════════════════════════════════════════════════ */
+const PREFERRED_VIDEO_CODEC = 'video/h264'
+
+function preferVideoCodec(transceiver) {
+  // getCapabilities pode não existir em Chromium antigo, e
+  // setCodecPreferences só vale antes de o transceiver ser negociado.
+  if (!transceiver || typeof transceiver.setCodecPreferences !== 'function') return
+  const codecs = RTCRtpReceiver.getCapabilities?.('video')?.codecs
+  if (!codecs?.length) return
+
+  const eh = (c) => c.mimeType.toLowerCase() === PREFERRED_VIDEO_CODEC
+  const preferidos = codecs.filter(eh)
+  // Sem H264 aqui: não force nada. Uma lista que exclua o que o outro lado
+  // tem em comum negociaria vídeo NENHUM — pior que o padrão.
+  if (!preferidos.length) {
+    appLog('WARN', '[SHARE] H264 não está nas capacidades desta máquina — mantendo o codec padrão')
+    return
+  }
+
+  try {
+    transceiver.setCodecPreferences([...preferidos, ...codecs.filter((c) => !eh(c))])
+  } catch (err) {
+    // Não é fatal: sem a preferência a conexão fecha igual, só que no
+    // encoder de software. O logEncoderUsed abaixo registra qual pegou.
+    appLog('WARN', `[SHARE] falha ao preferir H264: ${err.name} ${err.message}`)
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════════
    WEBRTC — QUEM ASSISTE INICIA A OFERTA
 ═══════════════════════════════════════════════════════════════ */
 async function startPeerConnection(remoteId) {
   const pc = createPeer(remoteId, 'watcher')
 
-  const offer = await pc.createOffer({
-    offerToReceiveVideo: true,
-    offerToReceiveAudio: true,
-  })
+  // Transceivers explícitos no lugar de offerToReceiveVideo/Audio: é o
+  // único jeito de chamar setCodecPreferences ANTES de a offer existir. A
+  // forma da offer não muda — uma m-line de vídeo e uma de áudio, as duas
+  // recvonly —, que é exatamente o que applySharedStreamToPeer do outro
+  // lado procura pra montar os senders (inclusive o de áudio de uma
+  // captura "Sem som"). Lá a busca é por KIND, não por ordem de m-line.
+  const videoTr = pc.addTransceiver('video', { direction: 'recvonly' })
+  pc.addTransceiver('audio', { direction: 'recvonly' })
+  preferVideoCodec(videoTr)
+
+  const offer = await pc.createOffer()
   await pc.setLocalDescription(offer)
   appLog('INFO', `[SHARE] offer enviada para ${remoteId.slice(0, 8)} — ${sdpDirections(offer.sdp)}`)
 
@@ -258,6 +325,44 @@ export async function applySharedStreamToPeer(pc, stream) {
   }
 }
 
+/* ═══════════════════════════════════════════════════════════════
+   QUAL ENCODER PEGOU DE FATO
+   Sem preferência declarada, quem escolhe o codec é a negociação com o
+   outro lado — e o Chromium fica no VP8, que só tem encoder de SOFTWARE
+   (libvpx). Isso não é problema nos bitrates que o app usa hoje (medido,
+   ver bugs,MD), mas é a primeira coisa que se quer saber quando alguém
+   reclamar de travamento: esta máquina codificou por hardware ou não?
+   Sem esta linha, a resposta não existe depois do fato.
+
+   Mesma ideia do [ICE ...] de core/ice-debug.js: uma leitura barata que
+   transforma "travou" em "travou codificando por software a 1920x776".
+
+   Uma leitura só, alguns segundos depois de a conexão subir (antes disso
+   `encoderImplementation` vem vazio). O nome traz "MediaFoundation" /
+   "NvEnc" / "QuickSync" quando é hardware, e "libvpx"/"OpenH264"/"libaom"
+   quando não é.
+═══════════════════════════════════════════════════════════════ */
+const ENCODER_LOG_DELAY_MS = 5000
+
+function logEncoderUsed(pc, remoteId) {
+  setTimeout(async () => {
+    // A conexão pode ter morrido nesse meio tempo.
+    if (state.sharePeers[remoteId] !== pc) return
+    try {
+      const stats = await pc.getStats()
+      stats.forEach((r) => {
+        if (r.type !== 'outbound-rtp' || r.kind !== 'video') return
+        const impl = r.encoderImplementation || 'desconhecido'
+        const software = /libvpx|openh264|libaom/i.test(impl)
+        appLog('INFO',
+          `[SHARE] encoder de vídeo para ${remoteId.slice(0, 8)}: ${impl}`
+          + ` (${software ? 'software' : 'hardware'})`
+          + ` ${r.frameWidth}x${r.frameHeight}`)
+      })
+    } catch { /* pc fechou entre o timer e a leitura */ }
+  }, ENCODER_LOG_DELAY_MS)
+}
+
 // Direções das m-lines de um SDP — é o que prova se a answer realmente
 // oferece vídeo em envio. Sem isso a depuração vira adivinhação.
 export function sdpDirections(sdp) {
@@ -349,6 +454,7 @@ export async function handleOffer(fromId, offer) {
   appLog('INFO', `[SHARE] answer para ${fromId.slice(0, 8)} — ${sdpDirections(answer.sdp)}`)
   sendWS({ type: 'answer', to: fromId, payload: answer })
   scheduleViewerSound(fromId)
+  logEncoderUsed(pc, fromId)
 }
 
 export async function handleAnswer(fromId, answer) {
